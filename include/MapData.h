@@ -7,6 +7,15 @@
 
 #pragma pack(push, 1)
 
+// Doom Thing
+struct WADThing {
+    int16_t x;
+    int16_t y;
+    int16_t angle;
+    int16_t type;
+    int16_t options;
+};
+
 // Doom Vertex
 struct WADVertex {
     int16_t x;
@@ -45,6 +54,23 @@ struct WADSector {
     int16_t tag;
 };
 
+// Doom Seg (part of a subsector)
+struct WADSeg {
+    int16_t v1;
+    int16_t v2;
+    int16_t angle;
+    int16_t lineDef;
+    int16_t side;
+    int16_t offset;
+};
+
+// Doom SubSector
+struct WADSubSector {
+    int16_t numSegs;
+    int16_t firstSeg;
+};
+
 #pragma pack(pop)
+
 
 #endif // MAP_DATA_H

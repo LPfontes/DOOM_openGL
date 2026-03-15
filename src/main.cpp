@@ -143,7 +143,21 @@ int main() {
     Map map("E1M1");
     if (!map.LoadFromWAD(wad)) return -1;
 
+    // --- Position Camera at Player 1 Start ---
+    const auto& things = map.GetThings();
+    for (const auto& t : things) {
+        if (t.type == 1) { // Player 1 start
+            // Doom units to OpenGL units
+            camera.Position = glm::vec3((float)t.x * 0.01f, 40.0f * 0.01f, (float)t.y * 0.01f);
+            camera.Yaw = (float)t.angle;
+            // Yaw in Doom: 0 = East, 90 = North... 
+            // We might need adjustment here but let's see.
+            break;
+        }
+    }
+
     Scene scene;
+
     scene.GenerateFromMap(map);
 
     // Render Loop
