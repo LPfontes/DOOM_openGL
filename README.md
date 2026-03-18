@@ -68,8 +68,9 @@ Como os setores do Doom podem ser buracos ou formas complexas (como a letra "C")
 ## 🚀 Como Executar
 
 ### Pré-requisitos
-- Compilador C++ (recomendado MinGW no Windows ou GCC no Linux).
-- CMake instalado.
+- Compilador C++ (recomendado MSYS2/MinGW no Windows ou GCC no Linux).
+  - No Windows usando MSYS2 (Terminal UCRT64), instale a toolchain com: `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make`
+- CMake instalado e adicionado ao PATH.
 - Arquivo `doom1.wad` (Shareware ou Full) na pasta `assets/`.
 
 ### Comandos de Build (Windows/MinGW)
