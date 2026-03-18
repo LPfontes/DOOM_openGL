@@ -76,7 +76,7 @@ void Scene::GenerateFromMap(const Map& map) {
         }
     }
 
-    // --- Render Floors and Ceilings via Ear Clipping (APPROACH 2) ---
+    // --- Render Floors and Ceilings via Ear Clipping 
     for (int sIdx = 0; sIdx < sectors.size(); ++sIdx) {
         const auto& sector = sectors[sIdx];
         float floor = (float)sector.floorHeight;
@@ -124,8 +124,6 @@ void Scene::GenerateFromMap(const Map& map) {
         }
 
         // 3. Triangulate each loop (Simple Ear Clipping for each disconnected part)
-        // Note: This simplified version doesn't handle holes (inner sectors) perfectly,
-        // but for Doom's planar-like structure, rendering loops individually often works.
         for (auto& loop : loops) {
             std::vector<int> workingLoop = loop;
             while (workingLoop.size() >= 3) {
@@ -140,7 +138,6 @@ void Scene::GenerateFromMap(const Map& map) {
                     const auto& v2 = mapVertices[workingLoop[i2]];
 
                     // Check if triangle v0-v1-v2 is an "ear" (convex and no other points inside)
-                    // Simplified: just check convexity for now (Doom sectors are often "good")
                     float cross = (float)(v1.x - v0.x) * (v2.y - v1.y) - (float)(v1.y - v0.y) * (v2.x - v1.x);
                     
                     if (cross < 0) { // Convex for clockwise (Doom standard is often CW for sector loops)
