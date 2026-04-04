@@ -70,6 +70,13 @@ struct WADSubSector {
     int16_t firstSeg;
 };
 
+// Doom Node (for BSP)
+struct WADNode {
+    int16_t x, y, dx, dy; // Partition line
+    int16_t bbox[2][4];   // [right, left][top, bottom, left, right]
+    uint16_t children[2]; // If bit 15 is 1, it's a subsector (index with bit 15 cleared)
+};
+
 #pragma pack(pop)
 
 

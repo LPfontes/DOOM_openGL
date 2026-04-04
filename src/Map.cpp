@@ -57,6 +57,12 @@ bool Map::LoadFromWAD(WADParser& parser) {
     mSubSectors.resize(numSSectors);
     memcpy(mSubSectors.data(), ssectorData.data(), ssectorData.size());
 
+    // Load Nodes (Index + 7)
+    auto nodeData = parser.ReadLumpData(mapIndex + 7);
+    int numNodes = nodeData.size() / sizeof(WADNode);
+    mNodes.resize(numNodes);
+    memcpy(mNodes.data(), nodeData.data(), nodeData.size());
+
     std::cout << "Loaded map: " << mName << std::endl;
 
     std::cout << "Vertices: " << mVertices.size() << std::endl;
@@ -64,4 +70,43 @@ bool Map::LoadFromWAD(WADParser& parser) {
     std::cout << "Sectors:  " << mSectors.size() << std::endl;
 
     return true;
+}
+
+int Map::GetSectorAt(float x, float y) const {
+    if (mNodes.empty()) return -1;
+
+    int cur = (int)mNodes.size() - 1;
+    while (!(cur & 0x8000)) {
+        const auto& node = mNodes[cur];
+        // Partition line math (dx, dy are the vector components)
+        // We calculate which side the point is on relative to the partition line
+        float dx = x - node.x;
+        float dy = y - node.y;
+        
+        // Cross product to find side: (p.x - v.x) * v.dy - (p.y - v.y) * v.dx
+        float cross = dx * node.dy - dy * node.dx;
+        
+        // side 0 is right, side 1 is left
+        if (cross <= 0) cur = node.children[0];
+        else cur = node.children[1];
+    }
+
+    // Found subsector!
+    int ssecIdx = cur & 0x7FFF;
+    if (ssecIdx >= mSubSectors.size()) return -1;
+    const auto& ssec = mSubSectors[ssecIdx];
+    
+    // Every seg in a subsector belongs to the same sector
+    if (ssec.numSegs > 0) {
+        const auto& seg = mSegs[ssec.firstSeg];
+        if (seg.lineDef != -1) {
+            const auto& line = mLineDefs[seg.lineDef];
+            int sideIdx = (seg.side == 0) ? line.rightSideDef : line.leftSideDef;
+            if (sideIdx != -1) {
+                return mSideDefs[sideIdx].sector;
+            }
+        }
+    }
+
+    return -1;
 }

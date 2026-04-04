@@ -74,18 +74,8 @@ int main() {
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    // Movement logic setup
-    Movement movement(camera, SCR_WIDTH / 2.0f, SCR_HEIGHT / 2.0f);
-    glfwSetWindowUserPointer(window, &movement);
-
-    glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
-        Movement* m = static_cast<Movement*>(glfwGetWindowUserPointer(window));
-        if (m) m->ProcessMouse(xpos, ypos);
-    });
-    glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset) {
-        Movement* m = static_cast<Movement*>(glfwGetWindowUserPointer(window));
-        if (m) m->ProcessScroll(yoffset);
-    });
+    // tell GLFW to capture our mouse
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -123,6 +113,19 @@ int main() {
         Map map("E1M1");
         if (!map.LoadFromWAD(wad)) { glfwTerminate(); return -1; }
 
+        // Movement logic setup
+        Movement movement(camera, map, SCR_WIDTH / 2.0f, SCR_HEIGHT / 2.0f);
+        glfwSetWindowUserPointer(window, &movement);
+
+        glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
+            Movement* m = static_cast<Movement*>(glfwGetWindowUserPointer(window));
+            if (m) m->ProcessMouse(xpos, ypos);
+        });
+        glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset) {
+            Movement* m = static_cast<Movement*>(glfwGetWindowUserPointer(window));
+            if (m) m->ProcessScroll(yoffset);
+        });
+
         // --- Position Camera at Player 1 Start ---
         const auto& things = map.GetThings();
         for (const auto& t : things) {
@@ -152,7 +155,7 @@ int main() {
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::scale(model, glm::vec3(0.01f));
             glm::mat4 view = camera.GetViewMatrix();
-            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.01f, 1000.0f);
 
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));

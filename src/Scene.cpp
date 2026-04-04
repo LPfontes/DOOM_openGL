@@ -1,7 +1,12 @@
 #include "Scene.h"
 #include <iostream>
+#include <vector>
+#include <array>
+#include <map>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
+#include <mapbox/earcut.hpp>
 
 Scene::Scene() {}
 
@@ -197,7 +202,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         }
         if (edges.empty()) continue;
 
-        // Group edges into closed loops
+        // 1. Group edges into closed loops
         std::vector<std::vector<int>> loops;
         while (!edges.empty()) {
             std::vector<int> loop;
@@ -220,47 +225,86 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             if (loop.size() >= 3) loops.push_back(loop);
         }
 
-        // Ear Clipping triangulation
-        for (auto& loop : loops) {
-            std::vector<int> wl = loop;
-            while (wl.size() >= 3) {
-                bool earFound = false;
-                for (size_t i = 0; i < wl.size(); ++i) {
-                    int i0 = (i == 0) ? (int)wl.size() - 1 : (int)i - 1;
-                    int i1 = (int)i;
-                    int i2 = (i == wl.size() - 1) ? 0 : (int)i + 1;
+        if (loops.empty()) continue;
 
-                    const auto& mv0 = mapVertices[wl[i0]];
-                    const auto& mv1 = mapVertices[wl[i1]];
-                    const auto& mv2 = mapVertices[wl[i2]];
+        // 2. Prepare for Earcut
+        using Point = std::array<double, 2>;
+        std::vector<std::vector<Point>> polygon;
 
-                    float cross = (float)(mv1.x - mv0.x) * (mv2.y - mv1.y)
-                                - (float)(mv1.y - mv0.y) * (mv2.x - mv1.x);
-                    if (cross >= 0) continue; // not a convex ear (CW winding)
+        // Area helper to distinguish outer vs holes
+        auto getArea = [&](const std::vector<int>& l) {
+            double area = 0.0;
+            for (size_t i = 0; i < l.size(); ++i) {
+                const auto& v1 = mapVertices[l[i]];
+                const auto& v2 = mapVertices[l[(i + 1) % l.size()]];
+                area += (double)v1.x * v2.y - (double)v2.x * v1.y;
+            }
+            return area * 0.5;
+        };
 
-                    // Floor UVs: world-space tiling at 64 units per repeat
-                    float u0f = (float)mv0.x / 64.0f, v0f = (float)mv0.y / 64.0f;
-                    float u1f = (float)mv1.x / 64.0f, v1f = (float)mv1.y / 64.0f;
-                    float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
+        // Sort loops so the one with largest ABS area (presumably outer) is first
+        // In more robust logic, we'd check if a loop is inside another.
+        // For E1M1, the largest loop is almost always the outer one.
+        std::sort(loops.begin(), loops.end(), [&](const std::vector<int>& a, const std::vector<int>& b) {
+            return std::abs(getArea(a)) > std::abs(getArea(b));
+        });
 
-                    auto& fverts = batchMap[floorTex.id];
-                    fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light});
-                    fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light});
-                    fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light});
-
-                    // Ceiling (swap v1/v2 for correct winding); skip if sky
-                    if (!isSky) {
-                        auto& cverts = batchMap[ceilTex.id];
-                        cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light});
-                        cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light});
-                        cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light});
-                    }
-
-                    wl.erase(wl.begin() + i1);
-                    earFound = true;
-                    break;
+        std::vector<int> allIndices; // To map indexed points back to real vertices
+        for (const auto& loop : loops) {
+            std::vector<Point> ring;
+            double area = getArea(loop);
+            
+            // Outer loop should be CCW (positive area in our coordinate system)
+            // Holes should be CW (negative area)
+            // Earcut works best when orientations are consistent.
+            bool isOuter = (polygon.empty());
+            bool shouldBeCCW = isOuter; // Simplified: first is outer
+            
+            if ((area > 0) != shouldBeCCW) {
+                // Reverse it
+                for (auto it = loop.rbegin(); it != loop.rend(); ++it) {
+                    const auto& mv = mapVertices[*it];
+                    ring.push_back({(double)mv.x, (double)mv.y});
+                    allIndices.push_back(*it);
                 }
-                if (!earFound) break;
+            } else {
+                for (int idx : loop) {
+                    const auto& mv = mapVertices[idx];
+                    ring.push_back({(double)mv.x, (double)mv.y});
+                    allIndices.push_back(idx);
+                }
+            }
+            polygon.push_back(ring);
+        }
+
+        // 3. Triangulate
+        std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+        // 4. Generate vertices
+        for (size_t i = 0; i < indices.size(); i += 3) {
+            int i0 = allIndices[indices[i]];
+            int i1 = allIndices[indices[i+1]];
+            int i2 = allIndices[indices[i+2]];
+
+            const auto& mv0 = mapVertices[i0];
+            const auto& mv1 = mapVertices[i1];
+            const auto& mv2 = mapVertices[i2];
+
+            float u0f = (float)mv0.x / 64.0f, v0f = (float)mv0.y / 64.0f;
+            float u1f = (float)mv1.x / 64.0f, v1f = (float)mv1.y / 64.0f;
+            float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
+
+            auto& fverts = batchMap[floorTex.id];
+            fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light});
+            fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light});
+            fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light});
+
+            if (!isSky) {
+                auto& cverts = batchMap[ceilTex.id];
+                // Swap winding for ceiling
+                cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light});
+                cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light});
+                cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light});
             }
         }
     }
