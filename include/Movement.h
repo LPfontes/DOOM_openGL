@@ -34,6 +34,16 @@ private:
     bool devMode = false;
     bool nKeyWasPressed = false;
 
+    enum class DoorState { CLOSED, OPENING, OPEN, CLOSING };
+    struct ActiveDoor {
+        int sectorIndex;
+        DoorState state;
+        float targetY;
+        float waitTime;
+    };
+    std::vector<ActiveDoor> activeDoors;
+    bool spaceKeyWasPressed = false;
+
     bool CheckCollision(glm::vec3 nextPos);
 };
 

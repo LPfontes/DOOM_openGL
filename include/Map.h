@@ -22,6 +22,9 @@ public:
     const std::vector<WADNode>& GetNodes() const { return mNodes; }
 
     int GetSectorAt(float x, float y) const;
+    
+    std::vector<float>& GetCeilOffsets() { return mCeilOffsets; }
+    std::vector<float>& GetFloorOffsets() { return mFloorOffsets; }
 
 private:
     std::string mName;
@@ -33,6 +36,9 @@ private:
     std::vector<WADSeg> mSegs;
     std::vector<WADThing> mThings;
     std::vector<WADNode> mNodes;
+
+    std::vector<float> mCeilOffsets;
+    std::vector<float> mFloorOffsets;
 };
 
 

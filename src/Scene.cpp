@@ -104,6 +104,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
     // Helper: push a wall quad into the correct batch
     auto addWall = [&](const WADVertex& va, const WADVertex& vb,
                         float bottom, float top,
+                        int sIdxBot, int sIdxTop,
                         float segOffset, float xOff, float yOff,
                         float light, const TexEntry& tex)
     {
@@ -117,15 +118,18 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         float v_top = yOff / (float)tex.h;
         float v_bot = (wallH + yOff) / (float)tex.h;
 
+        float siBot = (float)sIdxBot;
+        float siTop = (float)sIdxTop;
+
         auto& verts = batchMap[tex.id];
-        // Triangle 1
-        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light});
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
+        // Triangle 1 (Bottoms use vertexType 3, Tops use vertexType 2)
+        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light, siBot, 3.0f});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, 3.0f});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, 2.0f});
         // Triangle 2
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
-        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, 3.0f});
+        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light, siTop, 2.0f});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, 2.0f});
     };
 
     // --- Walls via SEGS ---
@@ -150,6 +154,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             auto tex = GetOrLoadWallTex(side.middleTexture, wad);
             addWall(v1, v2,
                     (float)sector.floorHeight, (float)sector.ceilingHeight,
+                    side.sector, side.sector,
                     sOff, xOff, yOff, light, tex);
         } else {
             // Portal — may have lower and upper wall segments
@@ -164,6 +169,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                     auto tex = GetOrLoadWallTex(side.lowerTexture, wad);
                     addWall(v1, v2,
                             (float)sector.floorHeight, (float)otherSector.floorHeight,
+                            side.sector, otherSide.sector,
                             sOff, xOff, yOff, light, tex);
                 }
             }
@@ -174,6 +180,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                     auto tex = GetOrLoadWallTex(side.upperTexture, wad);
                     addWall(v1, v2,
                             (float)otherSector.ceilingHeight, (float)sector.ceilingHeight,
+                            otherSide.sector, side.sector,
                             sOff, xOff, yOff, light, tex);
                 }
             }
@@ -295,16 +302,17 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
 
             auto& fverts = batchMap[floorTex.id];
-            fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light});
-            fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light});
-            fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light});
+            float si = (float)sIdx;
+            fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light, si, 0.0f});
+            fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light, si, 0.0f});
+            fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light, si, 0.0f});
 
             if (!isSky) {
                 auto& cverts = batchMap[ceilTex.id];
-                // Swap winding for ceiling
-                cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light});
-                cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light});
-                cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light});
+                // Swap winding for ceiling (1.0f indicates ceiling)
+                cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light, si, 1.0f});
+                cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light, si, 1.0f});
+                cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light, si, 1.0f});
             }
         }
     }
@@ -333,6 +341,12 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         // location 2: light color (rgb)
         glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(5 * sizeof(float)));
         glEnableVertexAttribArray(2);
+        // location 3: sectorIndex
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        // location 4: vertexType
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(9 * sizeof(float)));
+        glEnableVertexAttribArray(4);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
@@ -343,12 +357,21 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
               << mTexCache.size() << " textures loaded." << std::endl;
 }
 
-void Scene::Render() {
+void Scene::Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets) {
+    // Basic setup: assuming you have a way to find the shader program ID
+    GLint prog;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    
+    // Upload offsets (up to 512 sectors)
+    if (!ceilOffsets.empty())
+        glUniform1fv(glGetUniformLocation(prog, "uSectorCeilOffsets"), (int)ceilOffsets.size(), ceilOffsets.data());
+    if (!floorOffsets.empty())
+        glUniform1fv(glGetUniformLocation(prog, "uSectorFloorOffsets"), (int)floorOffsets.size(), floorOffsets.data());
+
     for (const auto& batch : mBatches) {
         glBindTexture(GL_TEXTURE_2D, batch.texId);
         glBindVertexArray(batch.vao);
         glDrawArrays(GL_TRIANGLES, 0, batch.count);
     }
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }

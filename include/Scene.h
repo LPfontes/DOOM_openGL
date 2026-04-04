@@ -11,7 +11,9 @@
 struct Vertex3D {
     float x, y, z;
     float u, v;
-    float r, g, b;  // light modulation (lightLevel/255 per channel)
+    float r, g, b;  // light modulation
+    float sectorIndex; // Sector ID (0..N)
+    float vertexType;  // 0: Floor, 1: Ceiling, 2: WallTop, 3: WallBottom
 };
 
 struct DrawBatch {
@@ -31,7 +33,7 @@ public:
     ~Scene();
 
     void GenerateFromMap(const Map& map, WADParser& wad);
-    void Render();
+    void Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets);
 
 private:
     std::vector<DrawBatch> mBatches;

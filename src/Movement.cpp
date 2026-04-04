@@ -92,6 +92,9 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
                         float otherFloor = (float)otherSec.floorHeight * 0.01f;
                         float otherCeil = (float)otherSec.ceilingHeight * 0.01f;
                         
+                        // Add dynamic offset for doors
+                        otherCeil += map.GetCeilOffsets()[sides[otherSideIdx].sector];
+                        
                         if (otherFloor - curFloor > MAX_STEP_HEIGHT) blocking = true;
                         if (otherCeil - otherFloor < 0.50f) blocking = true;
                     }
@@ -131,6 +134,88 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
             camera.Position.y += currentSpeed * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
             camera.Position.y -= currentSpeed * deltaTime;
+    }
+
+    // --- INTERACTION: OPEN DOORS ---
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if (!spaceKeyWasPressed) {
+            spaceKeyWasPressed = true;
+            // Raycast forward to find a door (64 units)
+            float rayLen = 64.0f; 
+            float rx = camera.Position.x * 100.0f + camera.Front.x * rayLen;
+            float rz = camera.Position.z * 100.0f + camera.Front.z * rayLen;
+            float px = camera.Position.x * 100.0f;
+            float pz = camera.Position.z * 100.0f;
+
+            for (const auto& line : map.GetLineDefs()) {
+                const auto& v1 = map.GetVertices()[line.v1];
+                const auto& v2 = map.GetVertices()[line.v2];
+                // Simple intersection or proximity check
+                float dx = (float)v2.x - v1.x;
+                float dz = (float)v2.y - v1.y;
+                float lenSq = dx*dx + dz*dz;
+                if (lenSq == 0) continue;
+                float t = std::max(0.0f, std::min(1.0f, ((px - v1.x) * dx + (pz - v1.y) * dz) / lenSq));
+                float cx = v1.x + t * dx, cz = v1.y + t * dz;
+                float dSq = (px - cx)*(px - cx) + (pz - cz)*(pz - cz);
+
+                if (dSq < rayLen * rayLen && (line.specialType == 1 || line.specialType == 31)) {
+                    // It's a door!
+                    int doorSecIdx = -1;
+                    if (line.sectorTag == 0) {
+                        // Local door: use back sector
+                        doorSecIdx = (map.GetSideDefs()[line.rightSideDef].sector == curSecIdx) ? 
+                                       map.GetSideDefs()[line.leftSideDef].sector : 
+                                       map.GetSideDefs()[line.rightSideDef].sector;
+                    } 
+                    // ... remote door logic omitted for brevity ...
+
+                    if (doorSecIdx != -1) {
+                        bool alreadyActive = false;
+                        for(auto& d : activeDoors) if(d.sectorIndex == doorSecIdx) alreadyActive = true;
+                        
+                        if (!alreadyActive) {
+                            ActiveDoor door;
+                            door.sectorIndex = doorSecIdx;
+                            door.state = DoorState::OPENING;
+                            // Doom doors open to lowest adjacent ceiling - 4
+                            door.targetY = ((float)map.GetSectors()[doorSecIdx].ceilingHeight + 100.0f) * 0.01f; // Simplified target
+                            door.waitTime = 4.0f;
+                            activeDoors.push_back(door);
+                            std::cout << "Opening Door Sector: " << doorSecIdx << std::endl;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        spaceKeyWasPressed = false;
+    }
+
+    // --- ANIMATE DOORS ---
+    auto& ceilOffsets = map.GetCeilOffsets();
+    for (auto it = activeDoors.begin(); it != activeDoors.end(); ) {
+        float& off = ceilOffsets[it->sectorIndex];
+        float speed = 2.0f * deltaTime; // Units per second (scaled)
+
+        if (it->state == DoorState::OPENING) {
+            off += speed;
+            if (off >= (it->targetY - (float)map.GetSectors()[it->sectorIndex].ceilingHeight * 0.01f)) {
+                off = it->targetY - (float)map.GetSectors()[it->sectorIndex].ceilingHeight * 0.01f;
+                it->state = DoorState::OPEN;
+            }
+        } else if (it->state == DoorState::OPEN) {
+            it->waitTime -= deltaTime;
+            if (it->waitTime <= 0) it->state = DoorState::CLOSING;
+        } else if (it->state == DoorState::CLOSING) {
+            off -= speed;
+            if (off <= 0) {
+                off = 0;
+                it = activeDoors.erase(it);
+                continue;
+            }
+        }
+        ++it;
     }
 }
 

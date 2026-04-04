@@ -69,6 +69,9 @@ bool Map::LoadFromWAD(WADParser& parser) {
     std::cout << "LineDefs: " << mLineDefs.size() << std::endl;
     std::cout << "Sectors:  " << mSectors.size() << std::endl;
 
+    mCeilOffsets.assign(mSectors.size(), 0.0f);
+    mFloorOffsets.assign(mSectors.size(), 0.0f);
+
     return true;
 }
 
