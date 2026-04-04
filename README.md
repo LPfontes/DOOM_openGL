@@ -13,8 +13,13 @@ Um motor de renderização 3D simplificado construído em C++ e OpenGL para visu
   - Controle de câmera estilo FPS (WASD + Mouse).
   - Sistema de "voo" para exploração técnica do mapa.
   - Posicionamento automático no **Player 1 Start** original.
-- **Sistema de Cores por Altura**: Visualização facilitada por cores (Azul/Verde/Vermelho) para distinguir diferentes níveis de elevação do mapa.
-- **Iluminação por Setor**: Suporte aos níveis de brilho original do motor Doom para profundidade visual.
+- **Texturas Reais do Doom**: Carregamento e renderização das texturas originais diretamente do arquivo WAD.
+  - **Flats** (chão/teto): texturas 64×64 decodificadas via paleta `PLAYPAL`.
+  - **Wall Textures**: texturas compostas (TEXTURE1/TEXTURE2), montadas a partir de patches via `PNAMES`.
+  - **UV Mapping**: coordenadas de textura corretas para paredes (baseadas em `seg.offset` + xOffset) e chão/teto (world-space tiling).
+  - **Batch Rendering**: geometria agrupada por textura — 1 VAO por textura, minimizando trocas de estado OpenGL.
+  - **F_SKY1**: setores com teto aberto (céu) não geram geometria de teto.
+- **Iluminação por Setor**: O `lightLevel` de cada setor modula a cor final da textura via fragment shader.
 
 ## 🛠️ Tecnologias Utilizadas
 
@@ -30,7 +35,7 @@ Um motor de renderização 3D simplificado construído em C++ e OpenGL para visu
 - `src/main.cpp`: Orquestrador da aplicação, loop de renderização e input.
 - `src/WADParser.cpp`: Lógica de leitura de arquivos binários WAD.
 - `src/Map.cpp`: Extração e organização dos dados de mapas (Vertices, LineDefs, Sectors, Things).
-- `src/Scene.cpp`: O "coração" geométrico; converte dados 2D do Doom em triângulos 3D (Ear Clipping).
+- `src/Scene.cpp`: O "coração" geométrico; converte dados 2D do Doom em triângulos 3D com texturas (Ear Clipping + batch por textura).
 - `include/Camera.h`: Classe de câmera Euler para navegação.
 - `assets/shaders/`: Shaders GLSL para processamento de vértices e fragmentos.
 
@@ -65,6 +70,21 @@ Como os setores do Doom podem ser buracos ou formas complexas (como a letra "C")
 2.  Cada "orelha" encontrada é "cortada" e transformada em um triângulo 3D.
 3.  O processo se repete até que todo o setor tenha sido convertido em uma malha de triângulos sólida para o chão e o teto.
 
+### Sistema de Texturas do Doom
+
+O Doom usa dois sistemas distintos de textura, ambos baseados em **paleta de cores** (`PLAYPAL`): 256 entradas RGB que mapeiam índices de 0–255 para cores reais.
+
+#### Flats (chão e teto)
+Lumps brutos de 64×64 = 4096 bytes, onde cada byte é um índice na paleta. Localizados entre os marcadores `F_START` e `F_END` no diretório WAD.
+
+#### Wall Textures (paredes)
+Sistema composto de três camadas:
+1. **`PNAMES`**: lista de nomes de patches (imagens brutas disponíveis).
+2. **`TEXTURE1` / `TEXTURE2`**: definem texturas compostas — cada entrada especifica largura, altura e quais patches usar com seus offsets de origem.
+3. **Patches** (formato picture): imagens no formato coluna-a-coluna do Doom. Cada coluna é uma lista de "posts" com `topdelta`, `length` e pixels (índices de paleta).
+
+A montagem final: para cada textura, cria-se um buffer RGB `w×h`, e cada patch é "pintado" na posição `(originX, originY)` via `DecodePatch`.
+
 ## 🚀 Como Executar
 
 ### Pré-requisitos
@@ -72,6 +92,15 @@ Como os setores do Doom podem ser buracos ou formas complexas (como a letra "C")
   - No Windows usando MSYS2 (Terminal UCRT64), instale a toolchain com: `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make`
 - CMake instalado e adicionado ao PATH.
 - Arquivo `doom1.wad` (Shareware ou Full) na pasta `assets/`.
+
+### Comandos de Build (Linux/GCC)
+```bash
+# Configurar e compilar
+cmake -B build -S . && cmake --build build -j$(nproc)
+
+# Executar (sempre da raiz do projeto)
+./build/DOOM_OpenGL
+```
 
 ### Comandos de Build (Windows/MinGW)
 ```powershell

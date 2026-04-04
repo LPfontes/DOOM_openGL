@@ -36,6 +36,11 @@ GLuint compileShader(const char* source, GLuint type) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
     glCompileShader(shader);
+    GLint ok; glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512]; glGetShaderInfoLog(shader, 512, NULL, log);
+        std::cerr << "Shader compile error: " << log << std::endl;
+    }
     return shader;
 }
 
@@ -102,64 +107,63 @@ int main() {
     glAttachShader(shaderProgram, vShader);
     glAttachShader(shaderProgram, fShader);
     glLinkProgram(shaderProgram);
+    { GLint ok; glGetProgramiv(shaderProgram, GL_LINK_STATUS, &ok);
+      if (!ok) { char log[512]; glGetProgramInfoLog(shaderProgram, 512, NULL, log);
+                 std::cerr << "Shader link error: " << log << std::endl; } }
     glUseProgram(shaderProgram);
 
-    // --- Load WAD and Map ---
-    WADParser wad("assets/doom1.wad");
-    if (!wad.Load()) return -1;
-    Map map("E1M1");
-    if (!map.LoadFromWAD(wad)) return -1;
+    // Bind texture unit 0 (the default) to the shader uniform
+    glUniform1i(glGetUniformLocation(shaderProgram, "ourTexture"), 0);
+    glActiveTexture(GL_TEXTURE0);
 
-    // --- Position Camera at Player 1 Start ---
-    const auto& things = map.GetThings();
-    for (const auto& t : things) {
-        if (t.type == 1) { // Player 1 start
-            // Doom units to OpenGL units
-            camera.Position = glm::vec3((float)t.x * 0.01f, 40.0f * 0.01f, (float)t.y * 0.01f);
-            camera.Yaw = (float)t.angle;
-            // Yaw in Doom: 0 = East, 90 = North... 
-            // We might need adjustment here but let's see.
-            break;
+    {   // GL scope: all GL objects destroyed before glfwTerminate()
+        // --- Load WAD and Map ---
+        WADParser wad("assets/doom1.wad");
+        if (!wad.Load()) { glfwTerminate(); return -1; }
+        Map map("E1M1");
+        if (!map.LoadFromWAD(wad)) { glfwTerminate(); return -1; }
+
+        // --- Position Camera at Player 1 Start ---
+        const auto& things = map.GetThings();
+        for (const auto& t : things) {
+            if (t.type == 1) {
+                camera.Position = glm::vec3((float)t.x * 0.01f, 40.0f * 0.01f, (float)t.y * 0.01f);
+                camera.Yaw = (float)t.angle;
+                break;
+            }
         }
-    }
 
-    Scene scene;
+        Scene scene;
+        scene.GenerateFromMap(map, wad);
 
-    scene.GenerateFromMap(map);
+        // Render Loop
+        while (!glfwWindowShouldClose(window)) {
+            float currentFrame = static_cast<float>(glfwGetTime());
+            deltaTime = currentFrame - lastFrame;
+            lastFrame = currentFrame;
 
-    // Render Loop
-    while (!glfwWindowShouldClose(window)) {
-        // Per-frame time logic
-        float currentFrame = static_cast<float>(glfwGetTime());
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
+            movement.ProcessInput(window, deltaTime);
 
-        // Input
-        movement.ProcessInput(window, deltaTime);
+            glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Render
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glUseProgram(shaderProgram);
 
-        glUseProgram(shaderProgram);
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::scale(model, glm::vec3(0.01f));
+            glm::mat4 view = camera.GetViewMatrix();
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
 
-        // Transformation matrices
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::scale(model, glm::vec3(0.01f)); 
-        
-        glm::mat4 view = camera.GetViewMatrix();
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+            scene.Render();
 
-        scene.Render();
-
-        // Swap buffers and poll events
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+    }   // scene, map, wad destroyed here — GL context still alive
 
     glfwTerminate();
     return 0;

@@ -1,5 +1,6 @@
 #include "Map.h"
 #include <iostream>
+#include <cstring>
 
 Map::Map(const std::string& name) : mName(name) {}
 
