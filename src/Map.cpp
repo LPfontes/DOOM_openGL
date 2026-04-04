@@ -80,14 +80,13 @@ int Map::GetSectorAt(float x, float y) const {
         const auto& node = mNodes[cur];
         // Partition line math (dx, dy are the vector components)
         // We calculate which side the point is on relative to the partition line
-        float dx = x - node.x;
-        float dy = y - node.y;
+        // Use double precision for the cross product to avoid float precision issues in large maps
+        double dx = (double)x - node.x;
+        double dy = (double)y - node.y;
+        double cross = dx * (double)node.dy - dy * (double)node.dx;
         
-        // Cross product to find side: (p.x - v.x) * v.dy - (p.y - v.y) * v.dx
-        float cross = dx * node.dy - dy * node.dx;
-        
-        // side 0 is right, side 1 is left
-        if (cross <= 0) cur = node.children[0];
+        // Doom's logic: if (node.dy * dx - dy * node.dx > 0) then child 0 (front)
+        if (cross > 0) cur = node.children[0];
         else cur = node.children[1];
     }
 

@@ -26,11 +26,13 @@ private:
     const float PLAYER_RADIUS = 0.25f; // In units scaled by 0.01
     const float COLLISION_BUFFER = 0.01f;
 
-    const float PLAYER_EYE_HEIGHT = 0.6f;
-    const float MAX_STEP_HEIGHT = 0.60f;
+    const float PLAYER_EYE_HEIGHT = 0.5f;
+    const float MAX_STEP_HEIGHT = 0.50f;
     const float SMOOTH_FACTOR = 10.0f;
 
     float targetFloorHeight = 0.0f;
+    bool devMode = false;
+    bool nKeyWasPressed = false;
 
     bool CheckCollision(glm::vec3 nextPos);
 };
