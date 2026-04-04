@@ -1,121 +1,218 @@
 #include "Scene.h"
 #include <iostream>
-#include <glm/glm.hpp>
+#include <cmath>
+#include <cstring>
 
-glm::vec3 getColorForHeight(float height) {
-    if (height < 0.0f) return glm::vec3(0.2f, 0.4f, 0.8f); // Azul para níveis baixos
-    if (height == 0.0f) return glm::vec3(0.2f, 0.7f, 0.3f); // Verde para o nível base
-    if (height < 100.0f) return glm::vec3(0.8f, 0.3f, 0.2f); // Vermelho para níveis médios
-    return glm::vec3(0.8f, 0.7f, 0.2f); // Amarelo para níveis altos
-}
-
-Scene::Scene() : mVAO(0), mVBO(0), mVertexCount(0) {}
+Scene::Scene() {}
 
 Scene::~Scene() {
-    if (mVAO) glDeleteVertexArrays(1, &mVAO);
-    if (mVBO) glDeleteBuffers(1, &mVBO);
+    for (auto& b : mBatches) {
+        glDeleteVertexArrays(1, &b.vao);
+        glDeleteBuffers(1, &b.vbo);
+    }
+    for (auto& kv : mTexCache)
+        glDeleteTextures(1, &kv.second.id);
+    if (mFallbackTex)
+        glDeleteTextures(1, &mFallbackTex);
 }
 
-void Scene::GenerateFromMap(const Map& map) {
-    std::vector<Vertex3D> vertices;
+GLuint Scene::CreateGLTexture(const std::vector<uint8_t>& rgb, int w, int h) {
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+static std::string NormalizeName(const char* name8) {
+    char buf[9] = {0};
+    strncpy(buf, name8, 8);
+    return std::string(buf); // stops at first null
+}
+
+TexEntry Scene::GetOrLoadWallTex(const char* name8, WADParser& wad) {
+    std::string name = NormalizeName(name8);
+    if (name.empty() || name == "-")
+        return {mFallbackTex, 64, 64};
+
+    auto it = mTexCache.find(name);
+    if (it != mTexCache.end()) return it->second;
+
+    int w = 0, h = 0;
+    auto rgb = wad.GetWallTextureRGB(name, w, h);
+    if (rgb.empty() || w == 0 || h == 0) {
+        mTexCache[name] = {mFallbackTex, 64, 64};
+        return {mFallbackTex, 64, 64};
+    }
+    TexEntry entry{CreateGLTexture(rgb, w, h), w, h};
+    mTexCache[name] = entry;
+    return entry;
+}
+
+TexEntry Scene::GetOrLoadFlatTex(const char* name8, WADParser& wad) {
+    std::string name = NormalizeName(name8);
+    if (name.empty() || name == "-")
+        return {mFallbackTex, 64, 64};
+
+    auto it = mTexCache.find(name);
+    if (it != mTexCache.end()) return it->second;
+
+    auto rgb = wad.GetFlatRGB(name);
+    if (rgb.empty()) {
+        mTexCache[name] = {mFallbackTex, 64, 64};
+        return {mFallbackTex, 64, 64};
+    }
+    TexEntry entry{CreateGLTexture(rgb, 64, 64), 64, 64};
+    mTexCache[name] = entry;
+    return entry;
+}
+
+void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
+    // Build fallback 8x8 magenta/black checkerboard
+    {
+        std::vector<uint8_t> fb(8 * 8 * 3);
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x) {
+                bool chk = (x + y) % 2 == 0;
+                int i = (y * 8 + x) * 3;
+                fb[i+0] = chk ? 255 : 0;
+                fb[i+1] = 0;
+                fb[i+2] = chk ? 255 : 0;
+            }
+        mFallbackTex = CreateGLTexture(fb, 8, 8);
+    }
 
     const auto& mapVertices = map.GetVertices();
-    const auto& lineDefs = map.GetLineDefs();
-    const auto& sideDefs = map.GetSideDefs();
-    const auto& sectors = map.GetSectors();
-    const auto& segs = map.GetSegs();
-    const auto& ssectors = map.GetSubSectors();
+    const auto& lineDefs    = map.GetLineDefs();
+    const auto& sideDefs    = map.GetSideDefs();
+    const auto& sectors     = map.GetSectors();
+    const auto& segs        = map.GetSegs();
 
-    auto addWall = [&](const WADVertex& vertex1, const WADVertex& vertex2, float bottom, float top, float r, float g, float b) {
+    // Map: texId -> vertex list
+    std::map<GLuint, std::vector<Vertex3D>> batchMap;
+
+    // Helper: push a wall quad into the correct batch
+    auto addWall = [&](const WADVertex& va, const WADVertex& vb,
+                        float bottom, float top,
+                        float segOffset, float xOff, float yOff,
+                        float light, const TexEntry& tex)
+    {
         if (top <= bottom) return;
+        float segLen = sqrtf(
+            (float)(vb.x - va.x) * (vb.x - va.x) +
+            (float)(vb.y - va.y) * (vb.y - va.y));
+        float wallH = top - bottom;
+        float u0 = (segOffset + xOff) / (float)tex.w;
+        float u1 = (segOffset + xOff + segLen) / (float)tex.w;
+        float v_top = yOff / (float)tex.h;
+        float v_bot = (wallH + yOff) / (float)tex.h;
+
+        auto& verts = batchMap[tex.id];
         // Triangle 1
-        vertices.push_back({(float)vertex1.x, bottom, (float)vertex1.y, r, g, b});
-        vertices.push_back({(float)vertex2.x, bottom, (float)vertex2.y, r, g, b});
-        vertices.push_back({(float)vertex1.x, top,    (float)vertex1.y, r, g, b});
+        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
         // Triangle 2
-        vertices.push_back({(float)vertex2.x, bottom, (float)vertex2.y, r, g, b});
-        vertices.push_back({(float)vertex2.x, top,    (float)vertex2.y, r, g, b});
-        vertices.push_back({(float)vertex1.x, top,    (float)vertex1.y, r, g, b});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
+        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
     };
 
-    // --- Render Walls via SEGS ---
-    // Segs are better because they are already clipped and belong to one side
+    // --- Walls via SEGS ---
     for (const auto& seg : segs) {
-        if (seg.lineDef == -1) continue; // Skip minisegs for walls
+        if (seg.lineDef == -1) continue;
 
         const auto& line = lineDefs[seg.lineDef];
-        const auto& v1 = mapVertices[seg.v1];
-        const auto& v2 = mapVertices[seg.v2];
+        const auto& v1   = mapVertices[seg.v1];
+        const auto& v2   = mapVertices[seg.v2];
 
         int sideIdx = (seg.side == 0) ? line.rightSideDef : line.leftSideDef;
         if (sideIdx == -1) continue;
-        const auto& side = sideDefs[sideIdx];
+        const auto& side   = sideDefs[sideIdx];
         const auto& sector = sectors[side.sector];
-        float light = (float)sector.lightLevel / 255.0f;
-        glm::vec3 baseColor = getColorForHeight((float)sector.floorHeight);
+        float light        = (float)sector.lightLevel / 255.0f;
+        float sOff         = (float)seg.offset;
+        float xOff         = (float)side.xOffset;
+        float yOff         = (float)side.yOffset;
 
         if (line.leftSideDef == -1) {
-            // Solid Wall
-            addWall(v1, v2, (float)sector.floorHeight, (float)sector.ceilingHeight, light * baseColor.r, light * baseColor.g, light * baseColor.b);
+            // Solid wall — use middle texture
+            auto tex = GetOrLoadWallTex(side.middleTexture, wad);
+            addWall(v1, v2,
+                    (float)sector.floorHeight, (float)sector.ceilingHeight,
+                    sOff, xOff, yOff, light, tex);
         } else {
-            // 2-Sided Line (Portal)
+            // Portal — may have lower and upper wall segments
             int otherSideIdx = (seg.side == 0) ? line.leftSideDef : line.rightSideDef;
-            const auto& otherSide = sideDefs[otherSideIdx];
+            const auto& otherSide   = sideDefs[otherSideIdx];
             const auto& otherSector = sectors[otherSide.sector];
 
-            // Lower Wall
+            // Lower wall (step up)
             if (otherSector.floorHeight > sector.floorHeight) {
-                glm::vec3 col = getColorForHeight((float)otherSector.floorHeight);
-                addWall(v1, v2, (float)sector.floorHeight, (float)otherSector.floorHeight, light * col.r * 0.8f, light * col.g * 0.8f, light * col.b * 0.8f);
+                std::string ltex = NormalizeName(side.lowerTexture);
+                if (ltex != "-" && !ltex.empty()) {
+                    auto tex = GetOrLoadWallTex(side.lowerTexture, wad);
+                    addWall(v1, v2,
+                            (float)sector.floorHeight, (float)otherSector.floorHeight,
+                            sOff, xOff, yOff, light, tex);
+                }
             }
-            // Upper Wall
+            // Upper wall (drop in ceiling)
             if (otherSector.ceilingHeight < sector.ceilingHeight) {
-                glm::vec3 col = getColorForHeight((float)sector.ceilingHeight);
-                addWall(v1, v2, (float)otherSector.ceilingHeight, (float)sector.ceilingHeight, light * col.r * 0.9f, light * col.g * 0.9f, light * col.b * 0.9f);
+                std::string utex = NormalizeName(side.upperTexture);
+                if (utex != "-" && !utex.empty()) {
+                    auto tex = GetOrLoadWallTex(side.upperTexture, wad);
+                    addWall(v1, v2,
+                            (float)otherSector.ceilingHeight, (float)sector.ceilingHeight,
+                            sOff, xOff, yOff, light, tex);
+                }
             }
         }
     }
 
-    // --- Render Floors and Ceilings via Ear Clipping 
-    for (int sIdx = 0; sIdx < sectors.size(); ++sIdx) {
+    // --- Floors and Ceilings via Ear Clipping ---
+    for (int sIdx = 0; sIdx < (int)sectors.size(); ++sIdx) {
         const auto& sector = sectors[sIdx];
         float floor = (float)sector.floorHeight;
-        float ceil = (float)sector.ceilingHeight;
+        float ceil  = (float)sector.ceilingHeight;
         float light = (float)sector.lightLevel / 255.0f;
-        glm::vec3 fCol = getColorForHeight(floor) * light * 0.7f;
-        glm::vec3 cCol = getColorForHeight(ceil) * light * 1.1f;
 
-        // 1. Collect all linedefs belonging to this sector
+        auto floorTex = GetOrLoadFlatTex(sector.floorTexture, wad);
+        bool isSky    = NormalizeName(sector.ceilingTexture) == "F_SKY1";
+        auto ceilTex  = isSky ? TexEntry{0,64,64} : GetOrLoadFlatTex(sector.ceilingTexture, wad);
+
+        // Collect edges belonging to this sector
         struct Edge { int v1, v2; };
         std::vector<Edge> edges;
         for (const auto& line : lineDefs) {
-            if (line.rightSideDef != -1 && sideDefs[line.rightSideDef].sector == sIdx) {
+            if (line.rightSideDef != -1 && sideDefs[line.rightSideDef].sector == sIdx)
                 edges.push_back({line.v1, line.v2});
-            }
-            if (line.leftSideDef != -1 && sideDefs[line.leftSideDef].sector == sIdx) {
-                edges.push_back({line.v2, line.v1}); // Reverse for left side
-            }
+            if (line.leftSideDef != -1 && sideDefs[line.leftSideDef].sector == sIdx)
+                edges.push_back({line.v2, line.v1});
         }
-
         if (edges.empty()) continue;
 
-        // 2. Group edges into closed loops
+        // Group edges into closed loops
         std::vector<std::vector<int>> loops;
         while (!edges.empty()) {
             std::vector<int> loop;
             loop.push_back(edges[0].v1);
-            int currentV = edges[0].v2;
+            int cur = edges[0].v2;
             edges.erase(edges.begin());
-
-            bool foundNext = true;
-            while (foundNext && currentV != loop[0]) {
-                foundNext = false;
+            bool found = true;
+            while (found && cur != loop[0]) {
+                found = false;
                 for (size_t i = 0; i < edges.size(); ++i) {
-                    if (edges[i].v1 == currentV) {
-                        loop.push_back(currentV);
-                        currentV = edges[i].v2;
+                    if (edges[i].v1 == cur) {
+                        loop.push_back(cur);
+                        cur = edges[i].v2;
                         edges.erase(edges.begin() + i);
-                        foundNext = true;
+                        found = true;
                         break;
                     }
                 }
@@ -123,66 +220,91 @@ void Scene::GenerateFromMap(const Map& map) {
             if (loop.size() >= 3) loops.push_back(loop);
         }
 
-        // 3. Triangulate each loop (Simple Ear Clipping for each disconnected part)
+        // Ear Clipping triangulation
         for (auto& loop : loops) {
-            std::vector<int> workingLoop = loop;
-            while (workingLoop.size() >= 3) {
+            std::vector<int> wl = loop;
+            while (wl.size() >= 3) {
                 bool earFound = false;
-                for (size_t i = 0; i < workingLoop.size(); ++i) {
-                    int i0 = (i == 0) ? workingLoop.size() - 1 : i - 1;
-                    int i1 = i;
-                    int i2 = (i == workingLoop.size() - 1) ? 0 : i + 1;
+                for (size_t i = 0; i < wl.size(); ++i) {
+                    int i0 = (i == 0) ? (int)wl.size() - 1 : (int)i - 1;
+                    int i1 = (int)i;
+                    int i2 = (i == wl.size() - 1) ? 0 : (int)i + 1;
 
-                    const auto& v0 = mapVertices[workingLoop[i0]];
-                    const auto& v1 = mapVertices[workingLoop[i1]];
-                    const auto& v2 = mapVertices[workingLoop[i2]];
+                    const auto& mv0 = mapVertices[wl[i0]];
+                    const auto& mv1 = mapVertices[wl[i1]];
+                    const auto& mv2 = mapVertices[wl[i2]];
 
-                    // Check if triangle v0-v1-v2 is an "ear" (convex and no other points inside)
-                    float cross = (float)(v1.x - v0.x) * (v2.y - v1.y) - (float)(v1.y - v0.y) * (v2.x - v1.x);
-                    
-                    if (cross < 0) { // Convex for clockwise (Doom standard is often CW for sector loops)
-                        // Floor
-                        vertices.push_back({(float)v0.x, floor, (float)v0.y, fCol.r, fCol.g, fCol.b});
-                        vertices.push_back({(float)v1.x, floor, (float)v1.y, fCol.r, fCol.g, fCol.b});
-                        vertices.push_back({(float)v2.x, floor, (float)v2.y, fCol.r, fCol.g, fCol.b});
+                    float cross = (float)(mv1.x - mv0.x) * (mv2.y - mv1.y)
+                                - (float)(mv1.y - mv0.y) * (mv2.x - mv1.x);
+                    if (cross >= 0) continue; // not a convex ear (CW winding)
 
-                        // Ceiling (Swap v1/v2)
-                        vertices.push_back({(float)v0.x, ceil, (float)v0.y, cCol.r, cCol.g, cCol.b});
-                        vertices.push_back({(float)v2.x, ceil, (float)v2.y, cCol.r, cCol.g, cCol.b});
-                        vertices.push_back({(float)v1.x, ceil, (float)v1.y, cCol.r, cCol.g, cCol.b});
+                    // Floor UVs: world-space tiling at 64 units per repeat
+                    float u0f = (float)mv0.x / 64.0f, v0f = (float)mv0.y / 64.0f;
+                    float u1f = (float)mv1.x / 64.0f, v1f = (float)mv1.y / 64.0f;
+                    float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
 
-                        workingLoop.erase(workingLoop.begin() + i1);
-                        earFound = true;
-                        break;
+                    auto& fverts = batchMap[floorTex.id];
+                    fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light});
+                    fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light});
+                    fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light});
+
+                    // Ceiling (swap v1/v2 for correct winding); skip if sky
+                    if (!isSky) {
+                        auto& cverts = batchMap[ceilTex.id];
+                        cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light});
+                        cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light});
+                        cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light});
                     }
+
+                    wl.erase(wl.begin() + i1);
+                    earFound = true;
+                    break;
                 }
-                if (!earFound) break; // Avoid infinite loop on messy geometry
+                if (!earFound) break;
             }
         }
     }
 
+    // Upload each batch as its own VAO/VBO
+    for (auto& [texId, verts] : batchMap) {
+        if (verts.empty()) continue;
+        DrawBatch batch;
+        batch.texId = texId;
+        batch.count = (int)verts.size();
 
-    mVertexCount = vertices.size();
+        glGenVertexArrays(1, &batch.vao);
+        glGenBuffers(1, &batch.vbo);
+        glBindVertexArray(batch.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, batch.vbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     verts.size() * sizeof(Vertex3D),
+                     verts.data(), GL_STATIC_DRAW);
 
-    glGenVertexArrays(1, &mVAO);
-    glGenBuffers(1, &mVBO);
+        // location 0: position (xyz)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)0);
+        glEnableVertexAttribArray(0);
+        // location 1: texcoord (uv)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        // location 2: light color (rgb)
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(5 * sizeof(float)));
+        glEnableVertexAttribArray(2);
 
-    glBindVertexArray(mVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, mVBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex3D), vertices.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+        mBatches.push_back(batch);
+    }
 
-    // Position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)0);
-    glEnableVertexAttribArray(0);
-    // Color attribute
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    std::cout << "Scene: " << mBatches.size() << " draw batches, "
+              << mTexCache.size() << " textures loaded." << std::endl;
 }
 
 void Scene::Render() {
-    glBindVertexArray(mVAO);
-    glDrawArrays(GL_TRIANGLES, 0, mVertexCount);
+    for (const auto& batch : mBatches) {
+        glBindTexture(GL_TEXTURE_2D, batch.texId);
+        glBindVertexArray(batch.vao);
+        glDrawArrays(GL_TRIANGLES, 0, batch.count);
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
