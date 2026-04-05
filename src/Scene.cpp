@@ -78,6 +78,10 @@ TexEntry Scene::GetOrLoadFlatTex(const char* name8, WADParser& wad) {
 }
 
 void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
+    mRTManager.Init();
+    mRTManager.UpdateMapData(map.GetLineDefs(), map.GetVertices(), map.GetSectors(), map.GetSideDefs());
+    mRTManager.UpdateLights(map.GetThings(), map.GetSectors(), 0); // Simplified player sector
+
     // Build fallback 8x8 magenta/black checkerboard
     {
         std::vector<uint8_t> fb(8 * 8 * 3);
@@ -358,16 +362,23 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
               << mTexCache.size() << " textures loaded." << std::endl;
 }
 
-void Scene::Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets) {
+void Scene::Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets, float time, const glm::vec3& camPos, const glm::vec3& camDir, bool flashlightOn) {
     // Basic setup: assuming you have a way to find the shader program ID
     GLint prog;
     glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
     
+    // Update player flashlight
+    mRTManager.SetFlashlight(camPos, camDir, flashlightOn);
     // Upload offsets (up to 512 sectors)
     if (!ceilOffsets.empty())
         glUniform1fv(glGetUniformLocation(prog, "uSectorCeilOffsets"), (int)ceilOffsets.size(), ceilOffsets.data());
     if (!floorOffsets.empty())
         glUniform1fv(glGetUniformLocation(prog, "uSectorFloorOffsets"), (int)floorOffsets.size(), floorOffsets.data());
+
+    glUniform1f(glGetUniformLocation(prog, "uTime"), time);
+
+    // Bind RT buffers
+    mRTManager.Bind(prog);
 
     for (const auto& batch : mBatches) {
         glBindTexture(GL_TEXTURE_2D, batch.texId);

@@ -15,8 +15,9 @@ InputHandler::InputHandler(Camera& cam, Map* map, Scene* scene, WADParser* wad, 
     instance = this;
 }
 
-void InputHandler::SetMouseCallback(GLFWwindow* window) {
+void InputHandler::SetCallbacks(GLFWwindow* window) {
     glfwSetMouseButtonCallback(window, MouseButtonCallback);
+    glfwSetKeyCallback(window, KeyCallback);
 }
 
 void InputHandler::UpdateMatrices(const glm::mat4& view, const glm::mat4& projection) {
@@ -48,5 +49,14 @@ void InputHandler::MouseButtonCallback(GLFWwindow* window, int button, int actio
     int hitLine = instance->gMap->RayCastToLineDef(instance->camera.Position, rayDir);
     if (hitLine != -1 && instance->gMovement) {
         instance->gMovement->OpenDoorByLineDefIndex(hitLine);
+    }
+}
+void InputHandler::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (!instance || action != GLFW_PRESS)
+        return;
+
+    if (key == GLFW_KEY_F) {
+        instance->mFlashlightOn = !instance->mFlashlightOn;
+        std::cout << "Flashlight: " << (instance->mFlashlightOn ? "ON" : "OFF") << std::endl;
     }
 }

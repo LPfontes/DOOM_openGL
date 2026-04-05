@@ -57,7 +57,7 @@ int main() {
     }
 
     // Configure GLFW
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
@@ -135,7 +135,7 @@ int main() {
 
         glm::mat4 view, projection;
         InputHandler inputHandler(camera, &map, &scene, &wad, &movement, view, projection);
-        inputHandler.SetMouseCallback(window);
+        inputHandler.SetCallbacks(window);
 
         // Render Loop
         while (!glfwWindowShouldClose(window)) {
@@ -166,7 +166,7 @@ int main() {
 
 
             
-            scene.Render(map.GetCeilOffsets(), map.GetFloorOffsets());
+            scene.Render(map.GetCeilOffsets(), map.GetFloorOffsets(), currentFrame, camera.Position, camera.Front, inputHandler.IsFlashlightOn());
 
             glfwSwapBuffers(window);
             glfwPollEvents();

@@ -7,6 +7,7 @@
 #include <string>
 #include "Map.h"
 #include "WADParser.h"
+#include "RTLighting.h"
 
 struct Vertex3D {
     float x, y, z;
@@ -33,12 +34,14 @@ public:
     ~Scene();
 
     void GenerateFromMap(const Map& map, WADParser& wad);
-    void Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets);
+    void Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets, float time, const glm::vec3& camPos, const glm::vec3& camDir, bool flashlightOn);
 
 private:
     std::vector<DrawBatch> mBatches;
     std::map<std::string, TexEntry> mTexCache;
     GLuint mFallbackTex = 0;
+
+    RTManager mRTManager;
 
     GLuint CreateGLTexture(const std::vector<uint8_t>& rgb, int w, int h);
     TexEntry GetOrLoadWallTex(const char* name8, WADParser& wad);
