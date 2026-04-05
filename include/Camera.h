@@ -54,19 +54,26 @@ public:
     }
 
     // processes input received from any keyboard-like input system. Accepts input parameter in the form of camera defined ENUM (to abstract it from windowing systems)
-    void ProcessKeyboard(Camera_Movement direction, float deltaTime) {
+    void ProcessKeyboard(Camera_Movement direction, float deltaTime, bool constrainToGround = false) {
         float velocity = MovementSpeed * deltaTime;
+        glm::vec3 moveFront = Front;
+        if (constrainToGround) {
+            moveFront.y = 0.0f;
+            if (glm::length(moveFront) > 0.001f)
+                moveFront = glm::normalize(moveFront);
+        }
+
         if (direction == FORWARD)
-            Position += Front * velocity;
+            Position += moveFront * velocity;
         if (direction == BACKWARD)
-            Position -= Front * velocity;
+            Position -= moveFront * velocity;
         if (direction == LEFT)
             Position -= Right * velocity;
         if (direction == RIGHT)
             Position += Right * velocity;
-        if (direction == UP)
+        if (direction == UP && !constrainToGround)
             Position += WorldUp * velocity;
-        if (direction == DOWN)
+        if (direction == DOWN && !constrainToGround)
             Position -= WorldUp * velocity;
     }
 

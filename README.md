@@ -20,11 +20,19 @@ Um motor de renderização 3D simplificado construído em C++ e OpenGL para visu
   - **Batch Rendering**: geometria agrupada por textura — 1 VAO por textura, minimizando trocas de estado OpenGL.
   - **F_SKY1**: setores com teto aberto (céu) não geram geometria de teto.
 - **Iluminação por Setor**: O `lightLevel` de cada setor modula a cor final da textura via fragment shader.
+- **Iluminação Local via Ray Tracing (Real-time)**: 🚀
+  - **Sombras Dinâmicas**: Algoritmo de intersecção raio-segmento 2.5D calculado em tempo real para cada pixel.
+  - **Fontes de Luz Reais**: Extração automática de tochas, candelabros e lâmpadas dos `THINGS` do WAD.
+  - **Efeitos Atmosféricos**: Tremulação (*Flicker*) e pulsação em tempo real para simular fogo e painéis eletrônicos.
+  - **Atenuação Realista**: A intensidade da luz diminui com o quadrado da distância.
+- **Lanterna do Jogador**: 🔦
+  - Foco de luz (Spotlight) controlado pela câmera do jogador.
+  - Alternável a qualquer momento (Tecla `F`).
 
 ## 🛠️ Tecnologias Utilizadas
 
 - **C++**: Lógica principal e processamento de dados binários.
-- **OpenGL 3.3 (Core Profile)**: Pipeline de renderização moderno.
+- **OpenGL 4.3 (Core Profile)**: Uso de **SSBOs** (Shader Storage Buffer Objects) para processar grandes volumes de luzes e geometria no shader de fragmentos.
 - **GLFW**: Gerenciamento de janelas e entrada.
 - **GLAD**: Carregamento de extensões OpenGL.
 - **GLM (OpenGL Mathematics)**: Operações de matrizes e vetores 3D.
@@ -37,7 +45,8 @@ Um motor de renderização 3D simplificado construído em C++ e OpenGL para visu
 - `src/Map.cpp`: Extração e organização dos dados de mapas (Vertices, LineDefs, Sectors, Things).
 - `src/Scene.cpp`: O "coração" geométrico; converte dados 2D do Doom em triângulos 3D com texturas (Ear Clipping + batch por textura).
 - `include/Camera.h`: Classe de câmera Euler para navegação.
-- `assets/shaders/`: Shaders GLSL para processamento de vértices e fragmentos.
+- `src/RTManager.cpp`: Gerenciador de iluminação Ray Tracing. Lida com buffers SSBO, extração de luzes e dados de geometria para a GPU.
+- `assets/shaders/`: Shaders GLSL (Fragment/Vertex) com lógica de traçado de raios e animação de luzes.
 
 ## 🏗️ Estrutura do Arquivo WAD
 
@@ -69,6 +78,17 @@ Como os setores do Doom podem ser buracos ou formas complexas (como a letra "C")
 1.  O algoritmo analisa os vértices do setor e procura por "orelhas" (triângulos convexos que não contêm outros pontos).
 2.  Cada "orelha" encontrada é "cortada" e transformada em um triângulo 3D.
 3.  O processo se repete até que todo o setor tenha sido convertido em uma malha de triângulos sólida para o chão e o teto.
+
+### Ray Tracing 2.5D (Sombras em Tempo Real) 🔦
+
+Diferente de jogos 3D modernos que usam BVH e malhas complexas, aproveitamos a natureza "2.5D" do Doom para um Ray Tracing extremamente performático:
+
+1.  **Envio de Dados**: Enviamos todas as `LineDefs` (paredes) e Luzes para a GPU via **SSBO**.
+2.  **Intersecção Rápida**: Para cada pixel, traçamos um raio até cada luz. O shader testa a intersecção 2D entre o raio e as linhas do mapa.
+3.  **Checagem Vertical**: Se houver intersecção no plano XZ, verificamos se o raio passa por "cima" ou por "baixo" da parede (considerando a altura do chão/teto naquele ponto).
+4.  **Oclusão Dinâmica**: Se o raio for bloqueado, o pixel fica na sombra. Caso contrário, calculamos a atenuação baseada na distância.
+
+Isso permite centenas de luzes dinâmicas com sombras reais sem a necessidade de hardware RTX dedicado.
 
 ### Sistema de Texturas do Doom
 
@@ -118,6 +138,7 @@ cmake --build build
 - **W, A, S, D**: Movimentação.
 - **Mouse**: Olhar ao redor.
 - **Q / E**: Subir / Descer.
+- **F**: Ligar / Desligar Lanterna. 🔦
 - **ESC**: Fechar aplicação.
 
 ---

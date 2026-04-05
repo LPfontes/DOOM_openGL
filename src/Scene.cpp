@@ -1,7 +1,12 @@
 #include "Scene.h"
 #include <iostream>
+#include <vector>
+#include <array>
+#include <map>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
+#include <mapbox/earcut.hpp>
 
 Scene::Scene() {}
 
@@ -73,6 +78,10 @@ TexEntry Scene::GetOrLoadFlatTex(const char* name8, WADParser& wad) {
 }
 
 void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
+    mRTManager.Init();
+    mRTManager.UpdateMapData(map.GetLineDefs(), map.GetVertices(), map.GetSectors(), map.GetSideDefs());
+    mRTManager.UpdateLights(map.GetThings(), map.GetSectors(), 0); // Simplified player sector
+
     // Build fallback 8x8 magenta/black checkerboard
     {
         std::vector<uint8_t> fb(8 * 8 * 3);
@@ -99,8 +108,10 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
     // Helper: push a wall quad into the correct batch
     auto addWall = [&](const WADVertex& va, const WADVertex& vb,
                         float bottom, float top,
+                        int sIdxBot, int sIdxTop,
                         float segOffset, float xOff, float yOff,
-                        float light, const TexEntry& tex)
+                        float light, const TexEntry& tex,
+                        float vTypeBot, float vTypeTop)
     {
         if (top <= bottom) return;
         float segLen = sqrtf(
@@ -112,20 +123,25 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         float v_top = yOff / (float)tex.h;
         float v_bot = (wallH + yOff) / (float)tex.h;
 
+        float siBot = (float)sIdxBot;
+        float siTop = (float)sIdxTop;
+
         auto& verts = batchMap[tex.id];
+        float invH = 1.0f / (float)tex.h;
         // Triangle 1
-        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light});
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
+        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, vTypeTop, invH});
         // Triangle 2
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light});
-        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light, siTop, vTypeTop, invH});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, vTypeTop, invH});
     };
 
     // --- Walls via SEGS ---
     for (const auto& seg : segs) {
         if (seg.lineDef == -1) continue;
+        if (map.IsDoorOpen(seg.lineDef)) continue;
 
         const auto& line = lineDefs[seg.lineDef];
         const auto& v1   = mapVertices[seg.v1];
@@ -145,7 +161,9 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             auto tex = GetOrLoadWallTex(side.middleTexture, wad);
             addWall(v1, v2,
                     (float)sector.floorHeight, (float)sector.ceilingHeight,
-                    sOff, xOff, yOff, light, tex);
+                    side.sector, side.sector,
+                    sOff, xOff, yOff, light, tex,
+                    3.0f, 2.0f); // Default: Bot follows Floor, Top follows Ceiling
         } else {
             // Portal — may have lower and upper wall segments
             int otherSideIdx = (seg.side == 0) ? line.leftSideDef : line.rightSideDef;
@@ -159,17 +177,21 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                     auto tex = GetOrLoadWallTex(side.lowerTexture, wad);
                     addWall(v1, v2,
                             (float)sector.floorHeight, (float)otherSector.floorHeight,
-                            sOff, xOff, yOff, light, tex);
+                            side.sector, otherSide.sector,
+                            sOff, xOff, yOff, light, tex,
+                            3.0f, 5.0f); // Type 5: Top follows Floor of sIdxBot (step)
                 }
             }
-            // Upper wall (drop in ceiling)
+            // Upper wall (drop in ceiling / door)
             if (otherSector.ceilingHeight < sector.ceilingHeight) {
                 std::string utex = NormalizeName(side.upperTexture);
                 if (utex != "-" && !utex.empty()) {
                     auto tex = GetOrLoadWallTex(side.upperTexture, wad);
                     addWall(v1, v2,
                             (float)otherSector.ceilingHeight, (float)sector.ceilingHeight,
-                            sOff, xOff, yOff, light, tex);
+                            otherSide.sector, side.sector,
+                            sOff, xOff, yOff, light, tex,
+                            4.0f, 2.0f); // Type 4: Bot follows Ceiling of sIdxBot (door)
                 }
             }
         }
@@ -197,7 +219,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         }
         if (edges.empty()) continue;
 
-        // Group edges into closed loops
+        // 1. Group edges into closed loops
         std::vector<std::vector<int>> loops;
         while (!edges.empty()) {
             std::vector<int> loop;
@@ -220,47 +242,87 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             if (loop.size() >= 3) loops.push_back(loop);
         }
 
-        // Ear Clipping triangulation
-        for (auto& loop : loops) {
-            std::vector<int> wl = loop;
-            while (wl.size() >= 3) {
-                bool earFound = false;
-                for (size_t i = 0; i < wl.size(); ++i) {
-                    int i0 = (i == 0) ? (int)wl.size() - 1 : (int)i - 1;
-                    int i1 = (int)i;
-                    int i2 = (i == wl.size() - 1) ? 0 : (int)i + 1;
+        if (loops.empty()) continue;
 
-                    const auto& mv0 = mapVertices[wl[i0]];
-                    const auto& mv1 = mapVertices[wl[i1]];
-                    const auto& mv2 = mapVertices[wl[i2]];
+        // 2. Prepare for Earcut
+        using Point = std::array<double, 2>;
+        std::vector<std::vector<Point>> polygon;
 
-                    float cross = (float)(mv1.x - mv0.x) * (mv2.y - mv1.y)
-                                - (float)(mv1.y - mv0.y) * (mv2.x - mv1.x);
-                    if (cross >= 0) continue; // not a convex ear (CW winding)
+        // Area helper to distinguish outer vs holes
+        auto getArea = [&](const std::vector<int>& l) {
+            double area = 0.0;
+            for (size_t i = 0; i < l.size(); ++i) {
+                const auto& v1 = mapVertices[l[i]];
+                const auto& v2 = mapVertices[l[(i + 1) % l.size()]];
+                area += (double)v1.x * v2.y - (double)v2.x * v1.y;
+            }
+            return area * 0.5;
+        };
 
-                    // Floor UVs: world-space tiling at 64 units per repeat
-                    float u0f = (float)mv0.x / 64.0f, v0f = (float)mv0.y / 64.0f;
-                    float u1f = (float)mv1.x / 64.0f, v1f = (float)mv1.y / 64.0f;
-                    float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
+        // Sort loops so the one with largest ABS area (presumably outer) is first
+        // In more robust logic, we'd check if a loop is inside another.
+        // For E1M1, the largest loop is almost always the outer one.
+        std::sort(loops.begin(), loops.end(), [&](const std::vector<int>& a, const std::vector<int>& b) {
+            return std::abs(getArea(a)) > std::abs(getArea(b));
+        });
 
-                    auto& fverts = batchMap[floorTex.id];
-                    fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light});
-                    fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light});
-                    fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light});
-
-                    // Ceiling (swap v1/v2 for correct winding); skip if sky
-                    if (!isSky) {
-                        auto& cverts = batchMap[ceilTex.id];
-                        cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light});
-                        cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light});
-                        cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light});
-                    }
-
-                    wl.erase(wl.begin() + i1);
-                    earFound = true;
-                    break;
+        std::vector<int> allIndices; // To map indexed points back to real vertices
+        for (const auto& loop : loops) {
+            std::vector<Point> ring;
+            double area = getArea(loop);
+            
+            // Outer loop should be CCW (positive area in our coordinate system)
+            // Holes should be CW (negative area)
+            // Earcut works best when orientations are consistent.
+            bool isOuter = (polygon.empty());
+            bool shouldBeCCW = isOuter; // Simplified: first is outer
+            
+            if ((area > 0) != shouldBeCCW) {
+                // Reverse it
+                for (auto it = loop.rbegin(); it != loop.rend(); ++it) {
+                    const auto& mv = mapVertices[*it];
+                    ring.push_back({(double)mv.x, (double)mv.y});
+                    allIndices.push_back(*it);
                 }
-                if (!earFound) break;
+            } else {
+                for (int idx : loop) {
+                    const auto& mv = mapVertices[idx];
+                    ring.push_back({(double)mv.x, (double)mv.y});
+                    allIndices.push_back(idx);
+                }
+            }
+            polygon.push_back(ring);
+        }
+
+        // 3. Triangulate
+        std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+        // 4. Generate vertices
+        for (size_t i = 0; i < indices.size(); i += 3) {
+            int i0 = allIndices[indices[i]];
+            int i1 = allIndices[indices[i+1]];
+            int i2 = allIndices[indices[i+2]];
+
+            const auto& mv0 = mapVertices[i0];
+            const auto& mv1 = mapVertices[i1];
+            const auto& mv2 = mapVertices[i2];
+
+            float u0f = (float)mv0.x / 64.0f, v0f = (float)mv0.y / 64.0f;
+            float u1f = (float)mv1.x / 64.0f, v1f = (float)mv1.y / 64.0f;
+            float u2f = (float)mv2.x / 64.0f, v2f = (float)mv2.y / 64.0f;
+
+            auto& fverts = batchMap[floorTex.id];
+            float si = (float)sIdx;
+            fverts.push_back({(float)mv0.x, floor, (float)mv0.y, u0f, v0f, light, light, light, si, 0.0f});
+            fverts.push_back({(float)mv1.x, floor, (float)mv1.y, u1f, v1f, light, light, light, si, 0.0f});
+            fverts.push_back({(float)mv2.x, floor, (float)mv2.y, u2f, v2f, light, light, light, si, 0.0f});
+
+            if (!isSky) {
+                auto& cverts = batchMap[ceilTex.id];
+                // Swap winding for ceiling (1.0f indicates ceiling)
+                cverts.push_back({(float)mv0.x, ceil, (float)mv0.y, u0f, v0f, light, light, light, si, 1.0f});
+                cverts.push_back({(float)mv2.x, ceil, (float)mv2.y, u2f, v2f, light, light, light, si, 1.0f});
+                cverts.push_back({(float)mv1.x, ceil, (float)mv1.y, u1f, v1f, light, light, light, si, 1.0f});
             }
         }
     }
@@ -289,6 +351,15 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         // location 2: light color (rgb)
         glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(5 * sizeof(float)));
         glEnableVertexAttribArray(2);
+        // location 3: sectorIndex
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        // location 4: vertexType
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(9 * sizeof(float)));
+        glEnableVertexAttribArray(4);
+        // location 5: invTexHeight
+        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(10 * sizeof(float)));
+        glEnableVertexAttribArray(5);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
@@ -299,12 +370,28 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
               << mTexCache.size() << " textures loaded." << std::endl;
 }
 
-void Scene::Render() {
+void Scene::Render(const std::vector<float>& ceilOffsets, const std::vector<float>& floorOffsets, float time, const glm::vec3& camPos, const glm::vec3& camDir, bool flashlightOn) {
+    // Basic setup: assuming you have a way to find the shader program ID
+    GLint prog;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    
+    // Update player flashlight
+    mRTManager.SetFlashlight(camPos, camDir, flashlightOn);
+    // Upload offsets (up to 512 sectors)
+    if (!ceilOffsets.empty())
+        glUniform1fv(glGetUniformLocation(prog, "uSectorCeilOffsets"), (int)ceilOffsets.size(), ceilOffsets.data());
+    if (!floorOffsets.empty())
+        glUniform1fv(glGetUniformLocation(prog, "uSectorFloorOffsets"), (int)floorOffsets.size(), floorOffsets.data());
+
+    glUniform1f(glGetUniformLocation(prog, "uTime"), time);
+
+    // Bind RT buffers
+    mRTManager.Bind(prog);
+
     for (const auto& batch : mBatches) {
         glBindTexture(GL_TEXTURE_2D, batch.texId);
         glBindVertexArray(batch.vao);
         glDrawArrays(GL_TRIANGLES, 0, batch.count);
     }
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
