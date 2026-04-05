@@ -1,10 +1,6 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
-
-// Window dimensions
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
 #include <fstream>
 #include <sstream>
 #include <glm/glm.hpp>
@@ -14,6 +10,12 @@ const unsigned int SCR_HEIGHT = 600;
 #include "Map.h"
 #include "Scene.h"
 #include "Camera.h"
+#include "Movement.h"
+#include "InputHandler.h"
+
+// Window dimensions
+const unsigned int SCR_WIDTH = 800;
+const unsigned int SCR_HEIGHT = 600;
 
 // Camera
 Camera camera(glm::vec3(0.0f, 20.0f, 50.0f));
@@ -22,7 +24,6 @@ Camera camera(glm::vec3(0.0f, 20.0f, 50.0f));
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-#include "Movement.h"
 
 // Helper function to read shader file
 std::string readShaderFile(const char* filePath) {
@@ -44,13 +45,9 @@ GLuint compileShader(const char* source, GLuint type) {
     return shader;
 }
 
-
-
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
-
-
 
 int main() {
     // Initialize GLFW
@@ -73,10 +70,7 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-    // tell GLFW to capture our mouse
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
+    
     // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -139,6 +133,10 @@ int main() {
         Scene scene;
         scene.GenerateFromMap(map, wad);
 
+        glm::mat4 view, projection;
+        InputHandler inputHandler(camera, &map, &scene, &wad, &movement, view, projection);
+        inputHandler.SetMouseCallback(window);
+
         // Render Loop
         while (!glfwWindowShouldClose(window)) {
             float currentFrame = static_cast<float>(glfwGetTime());
@@ -154,13 +152,20 @@ int main() {
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::scale(model, glm::vec3(0.01f));
-            glm::mat4 view = camera.GetViewMatrix();
-            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.01f, 1000.0f);
+            view = camera.GetViewMatrix();
+            GLuint lightPosLoc = glGetUniformLocation(shaderProgram, "lightPos");
+            glUniform3f(lightPosLoc, camera.Position.x, camera.Position.y, camera.Position.z);
+
+            projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.01f, 1000.0f);
 
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
+            inputHandler.UpdateMatrices(view, projection);
+
+
+            
             scene.Render(map.GetCeilOffsets(), map.GetFloorOffsets());
 
             glfwSwapBuffers(window);

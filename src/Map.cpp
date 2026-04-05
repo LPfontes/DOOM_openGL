@@ -1,6 +1,8 @@
 #include "Map.h"
 #include <iostream>
 #include <cstring>
+#include <limits>
+#include <glm/glm.hpp>
 
 Map::Map(const std::string& name) : mName(name) {}
 
@@ -112,3 +114,105 @@ int Map::GetSectorAt(float x, float y) const {
 
     return -1;
 }
+
+static bool IsDoorLine(const WADLineDef& line) {
+    switch (line.specialType) {
+        case 1: case 2: case 7: case 8: case 9: case 10: case 11:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void Map::ToggleDoor(int lineDefIdx) {
+    if (lineDefIdx < 0 || lineDefIdx >= (int)mLineDefs.size())
+        return;
+
+    const auto& line = mLineDefs[lineDefIdx];
+    if (!IsDoorLine(line))
+        return;
+
+    mDoorStates[lineDefIdx] = !IsDoorOpen(lineDefIdx);
+}
+
+bool Map::IsDoorOpen(int lineDefIdx) const {
+    auto it = mDoorStates.find(lineDefIdx);
+    return it != mDoorStates.end() && it->second;
+}
+
+
+static bool RayIntersectsSegment2D(const glm::vec2& rayOrigin, const glm::vec2& rayDir,
+                                    const glm::vec2& p1, const glm::vec2& p2,
+                                    float& outDistance) {
+    glm::vec2 seg = p2 - p1;
+    float denom = rayDir.x * seg.y - rayDir.y * seg.x;
+    if (std::fabs(denom) < 1e-6f)
+        return false;
+
+    glm::vec2 diff = p1 - rayOrigin;
+    float t = (diff.x * seg.y - diff.y * seg.x) / denom;
+    if (t < 0.0f)
+        return false;
+
+    float u = (diff.x * rayDir.y - diff.y * rayDir.x) / denom;
+    if (u < 0.0f || u > 1.0f)
+        return false;
+
+    outDistance = t;
+    return true;
+}
+
+// int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const {
+//     float minDist = std::numeric_limits<float>::max();
+//     int hitLine = -1;
+
+//     glm::vec2 origin2D(rayOrigin.x, rayOrigin.z);
+//     glm::vec2 dir2D(rayDir.x, rayDir.z);
+//     if (glm::length(dir2D) < 1e-6f)
+//         return -1;
+//     dir2D = glm::normalize(dir2D);
+
+//     for (int i = 0; i < (int)mLineDefs.size(); ++i) {
+//         const auto& line = mLineDefs[i];
+//         const auto& v1 = mVertices[line.v1];
+//         const auto& v2 = mVertices[line.v2];
+//         glm::vec2 p1(v1.x * 0.01f, v1.y * 0.01f);
+//         glm::vec2 p2(v2.x * 0.01f, v2.y * 0.01f);
+
+//         float dist;
+//         if (RayIntersectsSegment2D(origin2D, dir2D, p1, p2, dist) && dist < minDist) {
+//             minDist = dist;
+//             hitLine = i;
+//         }
+//     }
+//     return hitLine;
+// }
+
+int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const {
+    float minDist = std::numeric_limits<float>::max();
+    int hitLine = -1;
+    float maxDistance = 1.0f; // Distância máxima de interação (100 unidades DOOM)
+
+    glm::vec2 origin2D(rayOrigin.x, rayOrigin.z);
+    glm::vec2 dir2D(rayDir.x, rayDir.z);
+    if (glm::length(dir2D) < 1e-6f)
+        return -1;
+    dir2D = glm::normalize(dir2D);
+
+    for (int i = 0; i < (int)mLineDefs.size(); ++i) {
+        const auto& line = mLineDefs[i];
+        const auto& v1 = mVertices[line.v1];
+        const auto& v2 = mVertices[line.v2];
+        glm::vec2 p1(v1.x * 0.01f, v1.y * 0.01f);
+        glm::vec2 p2(v2.x * 0.01f, v2.y * 0.01f);
+
+        float dist;
+        // Adicionada a restrição de distância máxima (dist <= maxDistance)
+        if (RayIntersectsSegment2D(origin2D, dir2D, p1, p2, dist) && dist < minDist && dist <= maxDistance) {
+            minDist = dist;
+            hitLine = i;
+        }
+    }
+    return hitLine;
+}
+

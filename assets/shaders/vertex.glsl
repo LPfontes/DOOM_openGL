@@ -7,6 +7,7 @@ layout (location = 4) in float aVertexType; // 0:Floor, 1:Ceil, 2:WallTop, 3:Wal
 
 out vec2 TexCoord;
 out vec3 LightColor;
+out vec3 WorldPos;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -29,7 +30,9 @@ void main() {
         pos.y += uSectorFloorOffsets[sIdx];
     }
 
+    WorldPos = (model * vec4(pos, 1.0)).xyz;
     gl_Position = projection * view * model * vec4(pos, 1.0);
     TexCoord   = aTexCoord;
     LightColor = aColor;
+
 }

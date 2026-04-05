@@ -12,6 +12,9 @@ public:
     void ProcessInput(GLFWwindow* window, float deltaTime);
     void ProcessMouse(double xpos, double ypos);
     void ProcessScroll(double yoffset);
+    
+    // Open a door by linedef index with animation
+    void OpenDoorByLineDefIndex(int lineDefIdx);
 
 private:
     Camera& camera;

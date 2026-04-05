@@ -135,6 +135,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
     // --- Walls via SEGS ---
     for (const auto& seg : segs) {
         if (seg.lineDef == -1) continue;
+        if (map.IsDoorOpen(seg.lineDef)) continue;
 
         const auto& line = lineDefs[seg.lineDef];
         const auto& v1   = mapVertices[seg.v1];

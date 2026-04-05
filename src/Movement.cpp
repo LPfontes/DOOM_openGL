@@ -66,7 +66,8 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
         float pz = nextPos.z * 100.0f;
         float pr = PLAYER_RADIUS * 100.0f;
 
-        for (const auto& line : lineDefs) {
+        for (int lineIdx = 0; lineIdx < (int)lineDefs.size(); ++lineIdx) {
+            const auto& line = lineDefs[lineIdx];
             const auto& v1 = vertices[line.v1];
             const auto& v2 = vertices[line.v2];
 
@@ -83,6 +84,11 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
             float collisionRadius = pr + (COLLISION_BUFFER * 100.0f);
 
             if (distSq < collisionRadius * collisionRadius) {
+                // If this door is open, don't block
+                if (map.IsDoorOpen(lineIdx)) {
+                    continue;
+                }
+                
                 bool blocking = (line.leftSideDef == -1) || (line.flags & 0x0001);
                 
                 if (!blocking) {
@@ -101,17 +107,38 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
                 }
 
                 if (blocking) {
+                    // 1. Resolve a penetração (Empurra o jogador para fora da parede)
+                    float penetration = collisionRadius - std::sqrt(distSq);
+                    if (penetration > 0.0f) {
+                        float wallLen = std::sqrt(lenSq);
+                        // Calcula a normal da parede (-dz, dx)
+                        float nx = -dz / wallLen;
+                        float nz = dx / wallLen;
+                        
+                        // Garante que a normal aponte na direção do jogador
+                        if ((px - closestX) * nx + (pz - closestZ) * nz < 0) {
+                            nx = -nx;
+                            nz = -nz;
+                        }
+
+                        // Empurra a posição futura
+                        nextPos.x += (nx * penetration) * 0.01f;
+                        nextPos.z += (nz * penetration) * 0.01f;
+                    }
+
+                    // 2. Calcula o deslizamento (Sliding) para não grudar na parede
                     float wallX = dx, wallZ = dz;
                     float wallLen = std::sqrt(lenSq);
                     float ux = wallX / wallLen, uz = wallZ / wallLen;
 
                     float dot = (moveVec.x * 100.0f * ux + moveVec.z * 100.0f * uz);
-                    nextPos.x = oldPos.x + (dot * ux) * 0.01f;
-                    nextPos.z = oldPos.z + (dot * uz) * 0.01f;
+                    
+                    // Atualiza o moveVec para que as próximas checagens no loop respeitem o slide
+                    moveVec.x = (dot * ux) * 0.01f;
+                    moveVec.z = (dot * uz) * 0.01f;
                     
                     px = nextPos.x * 100.0f;
                     pz = nextPos.z * 100.0f;
-                    moveVec = nextPos - oldPos;
                 }
             }
         }
@@ -246,4 +273,54 @@ void Movement::ProcessMouse(double xposIn, double yposIn) {
 
 void Movement::ProcessScroll(double yoffset) {
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
+
+void Movement::OpenDoorByLineDefIndex(int lineDefIdx) {
+    if (lineDefIdx < 0 || lineDefIdx >= (int)map.GetLineDefs().size())
+        return;
+    
+    const auto& line = map.GetLineDefs()[lineDefIdx];
+
+    // portas especiais // abre porta por missao
+    if (line.specialType != 1 && line.specialType != 31 && line.specialType != 117 && line.specialType != 118) {
+        return;
+    }
+
+    const auto& sides = map.GetSideDefs();
+    const auto& sectors = map.GetSectors();
+    
+    // Find which side of the door the player is on
+    int curSecIdx = map.GetSectorAt(camera.Position.x * 100.0f, camera.Position.z * 100.0f);
+    if (curSecIdx == -1) return;
+    
+    // Determine which sector is the door sector
+    int doorSecIdx = -1;
+    if (line.rightSideDef != -1 && line.leftSideDef != -1) {
+        int rightSec = sides[line.rightSideDef].sector;
+        int leftSec = sides[line.leftSideDef].sector;
+        
+        // The door sector is the one we're NOT in
+        doorSecIdx = (rightSec == curSecIdx) ? leftSec : rightSec;
+    }
+    
+    if (doorSecIdx == -1) return;
+    
+    // Check if door is already animating or open
+    bool alreadyActive = false;
+    for (auto& d : activeDoors) {
+        if (d.sectorIndex == doorSecIdx) {
+            alreadyActive = true;
+            break;
+        }
+    }
+    
+    if (!alreadyActive) {
+        ActiveDoor door;
+        door.sectorIndex = doorSecIdx;
+        door.state = DoorState::OPENING;
+        // Calculate target ceiling (open all the way)
+        door.targetY = ((float)sectors[doorSecIdx].ceilingHeight + 100.0f) * 0.01f;
+        door.waitTime = 2.0f;  // Shorter wait time for mouse-opened doors
+        activeDoors.push_back(door);
+    }
 }
