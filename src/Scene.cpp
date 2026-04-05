@@ -110,7 +110,8 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                         float bottom, float top,
                         int sIdxBot, int sIdxTop,
                         float segOffset, float xOff, float yOff,
-                        float light, const TexEntry& tex)
+                        float light, const TexEntry& tex,
+                        float vTypeBot, float vTypeTop)
     {
         if (top <= bottom) return;
         float segLen = sqrtf(
@@ -126,14 +127,15 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         float siTop = (float)sIdxTop;
 
         auto& verts = batchMap[tex.id];
-        // Triangle 1 (Bottoms use vertexType 3, Tops use vertexType 2)
-        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light, siBot, 3.0f});
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, 3.0f});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, 2.0f});
+        float invH = 1.0f / (float)tex.h;
+        // Triangle 1
+        verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, vTypeTop, invH});
         // Triangle 2
-        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, 3.0f});
-        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light, siTop, 2.0f});
-        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, 2.0f});
+        verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, vTypeBot, invH});
+        verts.push_back({(float)vb.x, top,    (float)vb.y, u1, v_top, light, light, light, siTop, vTypeTop, invH});
+        verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, vTypeTop, invH});
     };
 
     // --- Walls via SEGS ---
@@ -160,7 +162,8 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             addWall(v1, v2,
                     (float)sector.floorHeight, (float)sector.ceilingHeight,
                     side.sector, side.sector,
-                    sOff, xOff, yOff, light, tex);
+                    sOff, xOff, yOff, light, tex,
+                    3.0f, 2.0f); // Default: Bot follows Floor, Top follows Ceiling
         } else {
             // Portal — may have lower and upper wall segments
             int otherSideIdx = (seg.side == 0) ? line.leftSideDef : line.rightSideDef;
@@ -175,10 +178,11 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                     addWall(v1, v2,
                             (float)sector.floorHeight, (float)otherSector.floorHeight,
                             side.sector, otherSide.sector,
-                            sOff, xOff, yOff, light, tex);
+                            sOff, xOff, yOff, light, tex,
+                            3.0f, 5.0f); // Type 5: Top follows Floor of sIdxBot (step)
                 }
             }
-            // Upper wall (drop in ceiling)
+            // Upper wall (drop in ceiling / door)
             if (otherSector.ceilingHeight < sector.ceilingHeight) {
                 std::string utex = NormalizeName(side.upperTexture);
                 if (utex != "-" && !utex.empty()) {
@@ -186,7 +190,8 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                     addWall(v1, v2,
                             (float)otherSector.ceilingHeight, (float)sector.ceilingHeight,
                             otherSide.sector, side.sector,
-                            sOff, xOff, yOff, light, tex);
+                            sOff, xOff, yOff, light, tex,
+                            4.0f, 2.0f); // Type 4: Bot follows Ceiling of sIdxBot (door)
                 }
             }
         }
@@ -352,6 +357,9 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
         // location 4: vertexType
         glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(9 * sizeof(float)));
         glEnableVertexAttribArray(4);
+        // location 5: invTexHeight
+        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), (void*)(10 * sizeof(float)));
+        glEnableVertexAttribArray(5);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);

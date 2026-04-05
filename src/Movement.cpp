@@ -167,51 +167,91 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
         if (!spaceKeyWasPressed) {
             spaceKeyWasPressed = true;
-            // Raycast forward to find a door (64 units)
-            float rayLen = 64.0f; 
-            float rx = camera.Position.x * 100.0f + camera.Front.x * rayLen;
-            float rz = camera.Position.z * 100.0f + camera.Front.z * rayLen;
-            float px = camera.Position.x * 100.0f;
-            float pz = camera.Position.z * 100.0f;
+            
+            // Raycast forward to find a line interaction
+            int hitLine = map.RayCastToLineDef(camera.Position, camera.Front);
+            if (hitLine != -1) {
+                const auto& line = map.GetLineDefs()[hitLine];
+                
+                // --- DOORS (Ceiling) ---
+                bool isDoor = (line.specialType == 1 || line.specialType == 9 || line.specialType == 11 || line.specialType == 14 ||
+                               line.specialType == 26 || line.specialType == 27 || line.specialType == 28 ||
+                               line.specialType == 31 || line.specialType == 32 || line.specialType == 33 || line.specialType == 34 ||
+                               line.specialType == 46 || line.specialType == 63 || line.specialType == 103 ||
+                               line.specialType == 114 || line.specialType == 115 || line.specialType == 117 || line.specialType == 118);
+                
+                // --- FLOORS (Elevation) ---
+                bool isFloor = (line.specialType == 18 || line.specialType == 19 || line.specialType == 20 || // Floor Raise
+                                line.specialType == 36 || line.specialType == 37 || line.specialType == 38 || // W1/S1/WR Floor Raise
+                                line.specialType == 22 || line.specialType == 23 ||
+                                line.specialType == 101 || line.specialType == 102);
 
-            for (const auto& line : map.GetLineDefs()) {
-                const auto& v1 = map.GetVertices()[line.v1];
-                const auto& v2 = map.GetVertices()[line.v2];
-                // Simple intersection or proximity check
-                float dx = (float)v2.x - v1.x;
-                float dz = (float)v2.y - v1.y;
-                float lenSq = dx*dx + dz*dz;
-                if (lenSq == 0) continue;
-                float t = std::max(0.0f, std::min(1.0f, ((px - v1.x) * dx + (pz - v1.y) * dz) / lenSq));
-                float cx = v1.x + t * dx, cz = v1.y + t * dz;
-                float dSq = (px - cx)*(px - cx) + (pz - cz)*(pz - cz);
-
-                if (dSq < rayLen * rayLen && (line.specialType == 1 || line.specialType == 31)) {
-                    // It's a door!
-                    int doorSecIdx = -1;
+                if (isDoor || isFloor) {
+                    std::vector<int> targetSectors;
+                    
                     if (line.sectorTag == 0) {
-                        // Local door: use back sector
-                        doorSecIdx = (map.GetSideDefs()[line.rightSideDef].sector == curSecIdx) ? 
-                                       map.GetSideDefs()[line.leftSideDef].sector : 
-                                       map.GetSideDefs()[line.rightSideDef].sector;
-                    } 
-                    // ... remote door logic omitted for brevity ...
-
-                    if (doorSecIdx != -1) {
-                        bool alreadyActive = false;
-                        for(auto& d : activeDoors) if(d.sectorIndex == doorSecIdx) alreadyActive = true;
+                        // Local: check both sides
+                        int sR = (line.rightSideDef != -1) ? map.GetSideDefs()[line.rightSideDef].sector : -1;
+                        int sL = (line.leftSideDef != -1) ? map.GetSideDefs()[line.leftSideDef].sector : -1;
                         
-                        if (!alreadyActive) {
-                            ActiveDoor door;
-                            door.sectorIndex = doorSecIdx;
-                            door.state = DoorState::OPENING;
-                            // Doom doors open to lowest adjacent ceiling - 4
-                            door.targetY = ((float)map.GetSectors()[doorSecIdx].ceilingHeight + 100.0f) * 0.01f; // Simplified target
-                            door.waitTime = 4.0f;
-                            activeDoors.push_back(door);
-                            std::cout << "Opening Door Sector: " << doorSecIdx << std::endl;
+                        if (isDoor) {
+                            if (sR != -1 && sL != -1) {
+                                if (map.GetSectors()[sR].ceilingHeight < map.GetSectors()[sL].ceilingHeight) targetSectors.push_back(sR);
+                                else targetSectors.push_back(sL);
+                            } else if (sR != -1) targetSectors.push_back(sR);
+                        } else {
+                            if (sR != -1 && sL != -1) {
+                                if (map.GetSectors()[sR].floorHeight < map.GetSectors()[sL].floorHeight) targetSectors.push_back(sR);
+                                else targetSectors.push_back(sL);
+                            } else if (sR != -1) targetSectors.push_back(sR);
                         }
+                    } else {
+                        targetSectors = map.GetSectorsByTag(line.sectorTag);
                     }
+
+                    for (int animSecIdx : targetSectors) {
+                        ActiveSectorAnim* existing = nullptr;
+                        for (auto& a : activeAnims) {
+                            if (a.sectorIndex == animSecIdx) {
+                                existing = &a;
+                                break;
+                            }
+                        }
+                        
+                        if (existing) {
+                            // Se a porta estiver fechando ou aberta, reinicia o movimento de abertura (padrão DOOM)
+                            if (existing->state == DoorState::CLOSING || (isDoor && existing->state == DoorState::OPEN)) {
+                                existing->state = DoorState::OPENING;
+                                if (isDoor) existing->targetY = map.GetHighestAdjacentCeiling(animSecIdx);
+                                bool stay = (line.specialType == 31 || line.specialType == 32 || line.specialType == 118);
+                                existing->waitTime = stay ? 999999.0f : 4.0f;
+                                std::cout << "Reversing/Refreshing Sector Anim: " << animSecIdx << std::endl;
+                            }
+                            continue;
+                        }
+
+                        ActiveSectorAnim anim;
+                        anim.sectorIndex = animSecIdx;
+                        anim.state = DoorState::OPENING;
+                        anim.animType = isDoor ? SectorAnimType::CEILING : SectorAnimType::FLOOR;
+                        anim.speed = 70.0f;
+
+                        if (isDoor) {
+                            anim.startY = (float)map.GetSectors()[animSecIdx].ceilingHeight;
+                            anim.targetY = map.GetHighestAdjacentCeiling(animSecIdx);
+                            bool stay = (line.specialType == 31 || line.specialType == 32 || line.specialType == 118);
+                            anim.waitTime = stay ? 999999.0f : 4.0f;
+                        } else {
+                            anim.startY = (float)map.GetSectors()[animSecIdx].floorHeight;
+                            anim.targetY = map.GetNextHigherFloor(animSecIdx);
+                            anim.waitTime = 999999.0f;
+                        }
+
+                        activeAnims.push_back(anim);
+                        std::cout << "Activating Sector Anim: " << animSecIdx << " (Type: " << line.specialType << ", Prop: " << (isDoor ? "CEIL" : "FLOOR") << ", Target: " << anim.targetY << ")" << std::endl;
+                    }
+                } else if (line.specialType != 0) {
+                    std::cout << "Interacted with Special Line: " << line.specialType << " (Tag: " << line.sectorTag << ") - Not a standard door/anim." << std::endl;
                 }
             }
         }
@@ -219,26 +259,47 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
         spaceKeyWasPressed = false;
     }
 
-    // --- ANIMATE DOORS ---
+    UpdateSectorAnims(deltaTime);
+}
+
+void Movement::UpdateSectorAnims(float deltaTime) {
     auto& ceilOffsets = map.GetCeilOffsets();
-    for (auto it = activeDoors.begin(); it != activeDoors.end(); ) {
-        float& off = ceilOffsets[it->sectorIndex];
-        float speed = 2.0f * deltaTime; // Units per second (scaled)
+    auto& floorOffsets = map.GetFloorOffsets();
+    const auto& sectors = map.GetSectors();
+
+    for (auto it = activeAnims.begin(); it != activeAnims.end(); ) {
+        bool isCeil = (it->animType == SectorAnimType::CEILING);
+        float& currentOff = isCeil ? ceilOffsets[it->sectorIndex] : floorOffsets[it->sectorIndex];
+        float baseHeight = isCeil ? (float)sectors[it->sectorIndex].ceilingHeight : (float)sectors[it->sectorIndex].floorHeight;
+        float totalTargetOff = (it->targetY - baseHeight);
 
         if (it->state == DoorState::OPENING) {
-            off += speed;
-            if (off >= (it->targetY - (float)map.GetSectors()[it->sectorIndex].ceilingHeight * 0.01f)) {
-                off = it->targetY - (float)map.GetSectors()[it->sectorIndex].ceilingHeight * 0.01f;
+            bool movingUp = (it->targetY > baseHeight + currentOff);
+            float step = it->speed * deltaTime;
+            if (!movingUp) step = -step;
+
+            currentOff += step;
+            if ((movingUp && currentOff >= totalTargetOff) || (!movingUp && currentOff <= totalTargetOff)) {
+                currentOff = totalTargetOff;
                 it->state = DoorState::OPEN;
             }
         } else if (it->state == DoorState::OPEN) {
             it->waitTime -= deltaTime;
-            if (it->waitTime <= 0) it->state = DoorState::CLOSING;
+            if (it->waitTime <= 0) {
+                it->state = DoorState::CLOSING;
+            }
         } else if (it->state == DoorState::CLOSING) {
-            off -= speed;
-            if (off <= 0) {
-                off = 0;
-                it = activeDoors.erase(it);
+            float step = it->speed * deltaTime;
+            if (currentOff > 0.0f) {
+                currentOff -= step;
+                if (currentOff < 0.0f) currentOff = 0.0f;
+            } else {
+                currentOff += step;
+                if (currentOff > 0.0f) currentOff = 0.0f;
+            }
+
+            if (currentOff == 0.0f) {
+                it = activeAnims.erase(it);
                 continue;
             }
         }
@@ -281,46 +342,44 @@ void Movement::OpenDoorByLineDefIndex(int lineDefIdx) {
     
     const auto& line = map.GetLineDefs()[lineDefIdx];
 
-    // portas especiais // abre porta por missao
-    if (line.specialType != 1 && line.specialType != 31 && line.specialType != 117 && line.specialType != 118) {
-        return;
-    }
+    // Check if it's a door
+    if (line.specialType == 0) return;
 
     const auto& sides = map.GetSideDefs();
     const auto& sectors = map.GetSectors();
     
-    // Find which side of the door the player is on
     int curSecIdx = map.GetSectorAt(camera.Position.x * 100.0f, camera.Position.z * 100.0f);
-    if (curSecIdx == -1) return;
     
-    // Determine which sector is the door sector
-    int doorSecIdx = -1;
-    if (line.rightSideDef != -1 && line.leftSideDef != -1) {
-        int rightSec = sides[line.rightSideDef].sector;
-        int leftSec = sides[line.leftSideDef].sector;
+    // Determine target sectors (Local vs Remote)
+    std::vector<int> targetSectors;
+    if (line.sectorTag == 0) {
+        int sR = sides[line.rightSideDef].sector;
+        int sL = (line.leftSideDef != -1) ? sides[line.leftSideDef].sector : -1;
+        if (sR != -1 && sL != -1) {
+            if (sectors[sR].ceilingHeight < sectors[sL].ceilingHeight) targetSectors.push_back(sR);
+            else targetSectors.push_back(sL);
+        } else if (sR != -1) targetSectors.push_back(sR);
+        else if (sL != -1) targetSectors.push_back(sL);
+    } else {
+        targetSectors = map.GetSectorsByTag(line.sectorTag);
+    }
+
+    for (int doorSecIdx : targetSectors) {
+        bool alreadyActive = false;
+        for (auto& a : activeAnims) if (a.sectorIndex == doorSecIdx) alreadyActive = true;
         
-        // The door sector is the one we're NOT in
-        doorSecIdx = (rightSec == curSecIdx) ? leftSec : rightSec;
-    }
-    
-    if (doorSecIdx == -1) return;
-    
-    // Check if door is already animating or open
-    bool alreadyActive = false;
-    for (auto& d : activeDoors) {
-        if (d.sectorIndex == doorSecIdx) {
-            alreadyActive = true;
-            break;
+        if (!alreadyActive) {
+            ActiveSectorAnim anim;
+            anim.sectorIndex = doorSecIdx;
+            anim.state = DoorState::OPENING;
+            anim.animType = SectorAnimType::CEILING;
+            anim.startY = (float)map.GetSectors()[doorSecIdx].ceilingHeight;
+
+            float curCeil = (curSecIdx != -1) ? (float)map.GetSectors()[curSecIdx].ceilingHeight : -1000.0f;
+            anim.targetY = map.GetHighestAdjacentCeiling(doorSecIdx, curCeil);
+            anim.waitTime = 4.0f;
+            anim.speed = 70.0f;
+            activeAnims.push_back(anim);
         }
-    }
-    
-    if (!alreadyActive) {
-        ActiveDoor door;
-        door.sectorIndex = doorSecIdx;
-        door.state = DoorState::OPENING;
-        // Calculate target ceiling (open all the way)
-        door.targetY = ((float)sectors[doorSecIdx].ceilingHeight + 100.0f) * 0.01f;
-        door.waitTime = 2.0f;  // Shorter wait time for mouse-opened doors
-        activeDoors.push_back(door);
     }
 }

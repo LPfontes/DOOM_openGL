@@ -113,7 +113,15 @@ void RTManager::UpdateMapData(const std::vector<WADLineDef>& lines, const std::v
         glue.p2 = glm::vec2(verts[l.v2].x, verts[l.v2].y);
         
         if (l.rightSideDef != -1) {
-            int sIdx = sides[l.rightSideDef].sector;
+            int sR = sides[l.rightSideDef].sector;
+            int sL = (l.leftSideDef != -1) ? sides[l.leftSideDef].sector : -1;
+            
+            // Escolhe o setor com o teto mais baixo (geralmente a porta)
+            int sIdx = sR;
+            if (sL != -1 && sectors[sL].ceilingHeight < sectors[sR].ceilingHeight) {
+                sIdx = sL;
+            }
+
             glue.floor = (float)sectors[sIdx].floorHeight;
             glue.ceil = (float)sectors[sIdx].ceilingHeight;
             glue.sectorIdx = sIdx;

@@ -31,6 +31,8 @@ uniform int uNumLights;
 uniform int uNumLines;
 uniform float uTime;
 uniform sampler2D ourTexture;
+uniform float uSectorCeilOffsets[256];
+uniform float uSectorFloorOffsets[256];
 
 // Ray-segment intersection
 bool IsShadowed(vec3 fPos, vec3 lPos) {
@@ -55,10 +57,17 @@ bool IsShadowed(vec3 fPos, vec3 lPos) {
         float u = dot(v1, v3) / det;
 
         if (t > 0.01 && t < dMax - 0.01 && u >= 0.0 && u <= 1.0) {
-            // Check vertical blocking
+            // Check vertical blocking with offsets
             float h = fPos.y + (lPos.y - fPos.y) * (t / dMax);
+            int sIdx = lines[i].sectorIdx;
+            
             float f = lines[i].floor * 0.01;
             float c = lines[i].ceil * 0.01;
+
+            if (sIdx >= 0 && sIdx < 256) {
+                f += uSectorFloorOffsets[sIdx];
+                c += uSectorCeilOffsets[sIdx];
+            }
             
             if (h < f || h > c) return true;
         }

@@ -26,8 +26,8 @@ private:
     // Movement constants
     const float BASE_SPEED = 4.0f;
     const float RUN_MULTIPLIER = 2.0f;
-    const float PLAYER_RADIUS = 0.25f; // In units scaled by 0.01
-    const float COLLISION_BUFFER = 0.01f;
+    const float PLAYER_RADIUS = 0.16f; // Original Doom radius (16 units scaled by 0.01)
+    const float COLLISION_BUFFER = 0.005f;
 
     const float PLAYER_EYE_HEIGHT = 0.5f;
     const float MAX_STEP_HEIGHT = 0.50f;
@@ -37,15 +37,23 @@ private:
     bool devMode = false;
     bool nKeyWasPressed = false;
 
+    enum class SectorAnimType { CEILING, FLOOR };
     enum class DoorState { CLOSED, OPENING, OPEN, CLOSING };
-    struct ActiveDoor {
+    
+    struct ActiveSectorAnim {
         int sectorIndex;
+        SectorAnimType animType;
         DoorState state;
+        float startY;
         float targetY;
         float waitTime;
+        float speed;
     };
-    std::vector<ActiveDoor> activeDoors;
+    
+    std::vector<ActiveSectorAnim> activeAnims;
     bool spaceKeyWasPressed = false;
+
+    void UpdateSectorAnims(float deltaTime);
 
     bool CheckCollision(glm::vec3 nextPos);
 };

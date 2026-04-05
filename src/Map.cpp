@@ -191,28 +191,128 @@ static bool RayIntersectsSegment2D(const glm::vec2& rayOrigin, const glm::vec2& 
 int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const {
     float minDist = std::numeric_limits<float>::max();
     int hitLine = -1;
-    float maxDistance = 1.0f; // Distância máxima de interação (100 unidades DOOM)
+    float maxDistance = 5.5f; 
 
     glm::vec2 origin2D(rayOrigin.x, rayOrigin.z);
-    glm::vec2 dir2D(rayDir.x, rayDir.z);
-    if (glm::length(dir2D) < 1e-6f)
-        return -1;
-    dir2D = glm::normalize(dir2D);
+    
+    float angles[] = { 0.0f, -0.174f, 0.174f }; 
 
-    for (int i = 0; i < (int)mLineDefs.size(); ++i) {
-        const auto& line = mLineDefs[i];
-        const auto& v1 = mVertices[line.v1];
-        const auto& v2 = mVertices[line.v2];
-        glm::vec2 p1(v1.x * 0.01f, v1.y * 0.01f);
-        glm::vec2 p2(v2.x * 0.01f, v2.y * 0.01f);
+    for (float angle : angles) {
+        float cosA = cosf(angle);
+        float sinA = sinf(angle);
+        glm::vec2 baseDir(rayDir.x, rayDir.z);
+        if (glm::length(baseDir) < 1e-6f) continue;
+        baseDir = glm::normalize(baseDir);
 
-        float dist;
-        // Adicionada a restrição de distância máxima (dist <= maxDistance)
-        if (RayIntersectsSegment2D(origin2D, dir2D, p1, p2, dist) && dist < minDist && dist <= maxDistance) {
-            minDist = dist;
-            hitLine = i;
+        glm::vec2 dir2D(
+            baseDir.x * cosA - baseDir.y * sinA,
+            baseDir.x * sinA + baseDir.y * cosA
+        );
+
+        for (int i = 0; i < (int)mLineDefs.size(); ++i) {
+            const auto& line = mLineDefs[i];
+            const auto& v1 = mVertices[line.v1];
+            const auto& v2 = mVertices[line.v2];
+            glm::vec2 p1(v1.x * 0.01f, v1.y * 0.01f);
+            glm::vec2 p2(v2.x * 0.01f, v2.y * 0.01f);
+
+            float dist;
+            if (RayIntersectsSegment2D(origin2D, dir2D, p1, p2, dist) && dist < minDist && dist <= maxDistance) {
+                minDist = dist;
+                hitLine = i;
+            }
         }
     }
     return hitLine;
+}
+
+float Map::GetHighestAdjacentCeiling(int sectorIdx, float triggeringCeil) const {
+    if (sectorIdx < 0 || sectorIdx >= (int)mSectors.size()) return 0.0f;
+    
+    float maxCeil = -32768.0f;
+    bool foundAdjacent = false;
+
+    for (const auto& line : mLineDefs) {
+        if (line.rightSideDef == -1 || line.leftSideDef == -1) continue;
+        
+        int secR = mSideDefs[line.rightSideDef].sector;
+        int secL = (line.leftSideDef != -1) ? mSideDefs[line.leftSideDef].sector : -1;
+
+        if (secR == sectorIdx || secL == sectorIdx) {
+            int otherSecIdx = (secR == sectorIdx) ? secL : secR;
+            if (otherSecIdx == -1) continue;
+            
+            float otherCeil = (float)mSectors[otherSecIdx].ceilingHeight;
+            if (otherCeil > maxCeil) {
+                maxCeil = otherCeil;
+                foundAdjacent = true;
+            }
+        }
+    }
+    
+    // Doom: sobe até 4 unidades abaixo do teto vizinho mais alto
+    return foundAdjacent ? (maxCeil - 4.0f) : (float)mSectors[sectorIdx].ceilingHeight;
+}
+
+float Map::GetNextHigherFloor(int sectorIdx) const {
+    float curFloor = (float)mSectors[sectorIdx].floorHeight;
+    float nextFloor = curFloor;
+    bool found = false;
+
+    for (const auto& line : mLineDefs) {
+        if (line.rightSideDef == -1 || line.leftSideDef == -1) continue;
+        int sR = mSideDefs[line.rightSideDef].sector;
+        int sL = mSideDefs[line.leftSideDef].sector;
+
+        int neighborIdx = -1;
+        if (sR == sectorIdx) neighborIdx = sL;
+        else if (sL == sectorIdx) neighborIdx = sR;
+
+        if (neighborIdx != -1) {
+            float nFloor = (float)mSectors[neighborIdx].floorHeight;
+            if (nFloor > curFloor) {
+                if (!found || nFloor < nextFloor) {
+                    nextFloor = nFloor;
+                    found = true;
+                }
+            }
+        }
+    }
+    return nextFloor;
+}
+
+float Map::GetLowestAdjacentFloor(int sectorIdx) const {
+    float lowest = (float)mSectors[sectorIdx].floorHeight;
+    bool first = true;
+
+    for (const auto& line : mLineDefs) {
+        if (line.rightSideDef == -1 || line.leftSideDef == -1) continue;
+        int sR = mSideDefs[line.rightSideDef].sector;
+        int sL = mSideDefs[line.leftSideDef].sector;
+
+        int neighborIdx = -1;
+        if (sR == sectorIdx) neighborIdx = sL;
+        else if (sL == sectorIdx) neighborIdx = sR;
+
+        if (neighborIdx != -1) {
+            float nFloor = (float)mSectors[neighborIdx].floorHeight;
+            if (first || nFloor < lowest) {
+                lowest = nFloor;
+                first = false;
+            }
+        }
+    }
+    return lowest;
+}
+
+std::vector<int> Map::GetSectorsByTag(int tag) const {
+    std::vector<int> result;
+    if (tag == 0) return result;
+    for (int i = 0; i < (int)mSectors.size(); ++i) {
+        if (mSectors[i].tag == tag) {
+            result.push_back(i);
+        }
+    }
+    return result;
 }
 

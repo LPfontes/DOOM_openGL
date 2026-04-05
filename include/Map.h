@@ -27,6 +27,11 @@ public:
     void ToggleDoor(int lineDefIdx);
     bool IsDoorOpen(int lineDefIdx) const;
     int RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const;
+
+    float GetHighestAdjacentCeiling(int sectorIdx, float triggeringCeil = -1000.0f) const;
+    float GetNextHigherFloor(int sectorIdx) const;
+    float GetLowestAdjacentFloor(int sectorIdx) const;
+    std::vector<int> GetSectorsByTag(int tag) const;
     
     std::vector<float>& GetCeilOffsets() { return mCeilOffsets; }
     std::vector<float>& GetFloorOffsets() { return mFloorOffsets; }
