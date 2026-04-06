@@ -54,19 +54,19 @@ void RTManager::UpdateLights(const std::vector<WADThing>& things, const std::vec
 
         switch (t.type) {
             case 34: // Vela (Candle)
-                gl.colorInt = glm::vec4(1.0f, 0.9f, 0.6f, 1.5f); // Aumentado de 0.8
-                gl.radius = 100.0f; // Aumentado de 64
+                gl.colorInt = glm::vec4(1.0f, 0.9f, 0.6f, 1.5f); 
+                gl.radius = 100.0f; 
                 isLight = true;
                 break;
             case 35: // Candelabro (Candelabra)
-                gl.colorInt = glm::vec4(1.0f, 0.85f, 0.5f, 3.5f); // Aumentado de 1.5
-                gl.radius = 250.0f; // Aumentado de 120
+                gl.colorInt = glm::vec4(1.0f, 0.85f, 0.5f, 3.5f); 
+                gl.radius = 250.0f; 
                 isLight = true;
                 break;
             case 2024: // Tocha Verde (Green Torch)
-                gl.colorInt = glm::vec4(0.4f, 1.0f, 0.4f, 4.5f); // Aumentado de 2.2
+                gl.colorInt = glm::vec4(0.4f, 1.0f, 0.4f, 4.5f); 
                 gl.posType.w = 1.0f; 
-                gl.radius = 350.0f; // Aumentado de 150
+                gl.radius = 350.0f;   
                 isLight = true;
                 break;
             case 2025: // Tocha Vermelha (Red Torch)
@@ -86,7 +86,7 @@ void RTManager::UpdateLights(const std::vector<WADThing>& things, const std::vec
                               (t.type == 56) ? glm::vec4(1.0f, 0.3f, 0.3f, 3.0f) :
                                                glm::vec4(0.4f, 1.0f, 0.4f, 3.0f);
                 gl.posType.w = 1.0f;
-                gl.radius = 200.0f; // Aumentado
+                gl.radius = 200.0f; 
                 isLight = true;
                 break;
             case 48: // Pilar tecnológico (Tech pillar)
