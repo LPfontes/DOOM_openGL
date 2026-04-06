@@ -9,7 +9,7 @@
 
 #pragma pack(push, 1)
 struct WADHeader {
-    char type[4];          // "IWAD" or "PWAD"
+    char type[4];          // "IWAD" ou "PWAD"
     uint32_t numLumps;
     uint32_t directoryAddress;
 };
@@ -29,17 +29,17 @@ public:
     bool Load();
     const std::vector<WADLumpEntry>& GetLumps() const { return mLumps; }
 
-    // Finds a lump index by name
+    // Encontra o índice de um lump pelo nome
     int FindLump(const std::string& name, int startIndex = 0);
 
-    // Reads raw data from a lump
+    // Lê dados brutos de um lump
     std::vector<uint8_t> ReadLumpData(const WADLumpEntry& entry);
     std::vector<uint8_t> ReadLumpData(int index);
 
-    // Texture decoding
-    // Returns raw RGB bytes (64*64*3) for a flat (floor/ceiling texture)
+    // Decodificação de textura
+    // Retorna bytes RGB brutos (64*64*3) para um flat (textura de piso/teto)
     std::vector<uint8_t> GetFlatRGB(const std::string& name);
-    // Returns raw RGB bytes (outW*outH*3) for a composite wall texture
+    // Retorna bytes RGB brutos (outW*outH*3) para uma textura de parede composta
     std::vector<uint8_t> GetWallTextureRGB(const std::string& name, int& outW, int& outH);
 
 private:
@@ -48,7 +48,7 @@ private:
     WADHeader mHeader;
     std::vector<WADLumpEntry> mLumps;
 
-    // Lazy-loaded palette and patch names
+    // Paleta e nomes de patches carregados sob demanda (lazy-loaded)
     std::array<uint8_t, 768> mPalette;
     bool mPaletteParsed = false;
     std::vector<std::string> mPatchNames;
@@ -57,7 +57,7 @@ private:
     void EnsurePalette();
     void EnsurePatchNames();
 
-    // Draws a patch (picture format) into an RGB output buffer at (destX, destY)
+    // Desenha um patch (formato de imagem) em um buffer de saída RGB em (destX, destY)
     void DecodePatch(const std::vector<uint8_t>& patchData,
                      std::vector<uint8_t>& output,
                      int texW, int texH,

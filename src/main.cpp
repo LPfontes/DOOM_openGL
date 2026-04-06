@@ -13,19 +13,19 @@
 #include "Movement.h"
 #include "InputHandler.h"
 
-// Window dimensions
+// Dimensões da janela
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-// Camera
+// Câmera
 Camera camera(glm::vec3(0.0f, 20.0f, 50.0f));
 
-// Timing
+// Temporização (Timing)
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 
-// Helper function to read shader file
+// Função auxiliar para ler arquivo de shader
 std::string readShaderFile(const char* filePath) {
     std::ifstream file(filePath);
     std::stringstream buffer;
@@ -50,19 +50,19 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 int main() {
-    // Initialize GLFW
+    // Inicializa o GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
     }
 
-    // Configure GLFW
+    // Configura o GLFW
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Create Window
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Simplified DOOM OpenGL", NULL, NULL);
+    // Cria a Janela
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "DOOM OpenGL Simplificado", NULL, NULL);
     if (window == NULL) {
         std::cerr << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -71,10 +71,10 @@ int main() {
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     
-    // tell GLFW to capture our mouse
+    // diz ao GLFW para capturar nosso mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // Initialize GLAD
+    // Inicializa o GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return -1;
@@ -82,7 +82,7 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
 
-    // --- Load Shaders ---
+    // --- Carrega os Shaders ---
     std::string vCode = readShaderFile("assets/shaders/vertex.glsl");
     std::string fCode = readShaderFile("assets/shaders/fragment.glsl");
     GLuint vShader = compileShader(vCode.c_str(), GL_VERTEX_SHADER);
@@ -93,21 +93,21 @@ int main() {
     glLinkProgram(shaderProgram);
     { GLint ok; glGetProgramiv(shaderProgram, GL_LINK_STATUS, &ok);
       if (!ok) { char log[512]; glGetProgramInfoLog(shaderProgram, 512, NULL, log);
-                 std::cerr << "Shader link error: " << log << std::endl; } }
+                 std::cerr << "Erro de linkagem do shader: " << log << std::endl; } }
     glUseProgram(shaderProgram);
 
-    // Bind texture unit 0 (the default) to the shader uniform
+    // Associa a unidade de textura 0 (o padrão) ao uniform do shader
     glUniform1i(glGetUniformLocation(shaderProgram, "ourTexture"), 0);
     glActiveTexture(GL_TEXTURE0);
 
-    {   // GL scope: all GL objects destroyed before glfwTerminate()
-        // --- Load WAD and Map ---
+    {   // Escopo GL: todos os objetos GL são destruídos antes de glfwTerminate()
+        // --- Carrega WAD e Mapa ---
         WADParser wad("assets/doom1.wad");
         if (!wad.Load()) { glfwTerminate(); return -1; }
         Map map("E1M1");
         if (!map.LoadFromWAD(wad)) { glfwTerminate(); return -1; }
 
-        // Movement logic setup
+        // Configuração da lógica de movimento
         Movement movement(camera, map, SCR_WIDTH / 2.0f, SCR_HEIGHT / 2.0f);
         glfwSetWindowUserPointer(window, &movement);
 
@@ -120,7 +120,7 @@ int main() {
             if (m) m->ProcessScroll(yoffset);
         });
 
-        // --- Position Camera at Player 1 Start ---
+        // --- Posiciona a Câmera no ponto de início do Player 1 ---
         const auto& things = map.GetThings();
         for (const auto& t : things) {
             if (t.type == 1) {
@@ -137,7 +137,7 @@ int main() {
         InputHandler inputHandler(camera, &map, &scene, &wad, &movement, view, projection);
         inputHandler.SetCallbacks(window);
 
-        // Render Loop
+        // Loop de Renderização
         while (!glfwWindowShouldClose(window)) {
             float currentFrame = static_cast<float>(glfwGetTime());
             deltaTime = currentFrame - lastFrame;
@@ -171,7 +171,7 @@ int main() {
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
-    }   // scene, map, wad destroyed here — GL context still alive
+    }   // cena, mapa, wad são destruídos aqui — o contexto GL ainda está vivo
 
     glfwTerminate();
     return 0;

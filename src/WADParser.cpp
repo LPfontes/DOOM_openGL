@@ -18,7 +18,7 @@ bool WADParser::Load() {
         return false;
     }
 
-    // Read Header
+    // Lê o Cabeçalho (Header)
     mFile.read((char*)&mHeader, sizeof(WADHeader));
     
     std::string type(mHeader.type, 4);
@@ -27,7 +27,7 @@ bool WADParser::Load() {
         return false;
     }
 
-    // Read Directory
+    // Lê o Diretório
     mFile.seekg(mHeader.directoryAddress);
     mLumps.resize(mHeader.numLumps);
     for (uint32_t i = 0; i < mHeader.numLumps; ++i) {
@@ -54,7 +54,7 @@ int WADParser::FindLump(const std::string& name, int startIndex) {
 
 std::vector<uint8_t> WADParser::ReadLumpData(const WADLumpEntry& entry) {
     std::vector<uint8_t> data(entry.size);
-    mFile.clear(); // reset eofbit/failbit before seeking
+    mFile.clear(); // reseta eofbit/failbit antes de buscar (seeking)
     mFile.seekg(entry.filePos);
     mFile.read((char*)data.data(), entry.size);
     return data;
@@ -65,7 +65,7 @@ std::vector<uint8_t> WADParser::ReadLumpData(int index) {
     return ReadLumpData(mLumps[index]);
 }
 
-// --- Texture helpers ---
+// --- Auxiliares de Textura ---
 
 void WADParser::EnsurePalette() {
     if (mPaletteParsed) return;
@@ -74,7 +74,7 @@ void WADParser::EnsurePalette() {
     int idx = FindLump("PLAYPAL");
     if (idx == -1) return;
     auto data = ReadLumpData(idx);
-    // First palette: 256 RGB entries = 768 bytes
+    // Primeira paleta: 256 entradas RGB = 768 bytes
     for (int i = 0; i < 768 && i < (int)data.size(); ++i)
         mPalette[i] = data[i];
 }
@@ -94,7 +94,7 @@ void WADParser::EnsurePatchNames() {
         if (off + 8 > data.size()) break;
         char buf[9] = {0};
         memcpy(buf, data.data() + off, 8);
-        // uppercase for lookup
+        // letras maiúsculas para busca
         for (int c = 0; c < 8; ++c)
             buf[c] = (char)toupper((unsigned char)buf[c]);
         mPatchNames.push_back(std::string(buf));
@@ -126,7 +126,7 @@ void WADParser::DecodePatch(const std::vector<uint8_t>& data,
             if (topdelta == 0xFF) break;
             if (pos >= data.size()) break;
             uint8_t length = data[pos++];
-            pos++; // skip junk byte
+            pos++; // pula byte de lixo (junk byte)
             for (int i = 0; i < (int)length; ++i) {
                 if (pos >= data.size()) break;
                 int py = (int)topdelta + i + destY;
@@ -138,14 +138,14 @@ void WADParser::DecodePatch(const std::vector<uint8_t>& data,
                     output[pixIdx + 2] = mPalette[palIdx * 3 + 2];
                 }
             }
-            pos++; // skip trailing junk byte
+            pos++; // pula byte de lixo final
         }
     }
 }
 
 std::vector<uint8_t> WADParser::GetFlatRGB(const std::string& name) {
     EnsurePalette();
-    // Flats live between F_START and F_END markers in the WAD directory
+    // Flats vivem entre os marcadores F_START e F_END no diretório do WAD
     int fstart = FindLump("F_START");
     int fend   = FindLump("F_END");
     if (fstart == -1) fstart = FindLump("FF_START");
@@ -170,11 +170,11 @@ std::vector<uint8_t> WADParser::GetWallTextureRGB(const std::string& name, int& 
     EnsurePalette();
     EnsurePatchNames();
 
-    // Normalize name to uppercase, max 8 chars
+    // Normaliza o nome para maiúsculas, máx 8 caracteres
     std::string uname = name.substr(0, 8);
     for (auto& c : uname) c = (char)toupper((unsigned char)c);
 
-    // Search TEXTURE1 and TEXTURE2
+    // Procura em TEXTURE1 e TEXTURE2
     for (const char* lumpName : {"TEXTURE1", "TEXTURE2"}) {
         int texLumpIdx = FindLump(lumpName);
         if (texLumpIdx == -1) continue;
@@ -193,16 +193,16 @@ std::vector<uint8_t> WADParser::GetWallTextureRGB(const std::string& name, int& 
 
             const uint8_t* tp = texData.data() + offset;
 
-            // Compare name (8 chars, uppercase)
+            // Compara o nome (8 caracteres, maiúsculas)
             char tname[9] = {0};
             memcpy(tname, tp, 8);
             for (int c = 0; c < 8; ++c)
                 tname[c] = (char)toupper((unsigned char)tname[c]);
             if (strncmp(tname, uname.c_str(), 8) != 0) continue;
 
-            // Found it
-            // Doom texture struct: name[8], masked(int=4), width(2), height(2),
-            // columndirectory(int=4), patchcount(2) — total 22 bytes header
+            // Encontrou!
+            // Estrutura de textura do Doom: name[8], masked(int=4), width(2), height(2),
+            // columndirectory(int=4), patchcount(2) — total de 22 bytes de cabeçalho
             int16_t width, height;
             memcpy(&width,  tp + 12, 2);
             memcpy(&height, tp + 14, 2);
@@ -211,7 +211,7 @@ std::vector<uint8_t> WADParser::GetWallTextureRGB(const std::string& name, int& 
 
             outW = width;
             outH = height;
-            // Initialize RGB to dark gray (missing pixels fallback)
+            // Inicializa RGB para cinza escuro (fallback para pixels ausentes)
             std::vector<uint8_t> rgb(width * height * 3, 64);
 
             const uint8_t* pp = tp + 22;

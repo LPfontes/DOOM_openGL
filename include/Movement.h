@@ -13,7 +13,7 @@ public:
     void ProcessMouse(double xpos, double ypos);
     void ProcessScroll(double yoffset);
     
-    // Open a door by linedef index with animation
+    // Abre uma porta pelo índice da linedef com animação
     void OpenDoorByLineDefIndex(int lineDefIdx);
 
 private:
@@ -23,10 +23,10 @@ private:
     float lastY;
     bool firstMouse;
 
-    // Movement constants
+    // Constantes de movimento
     const float BASE_SPEED = 4.0f;
     const float RUN_MULTIPLIER = 2.0f;
-    const float PLAYER_RADIUS = 0.16f; // Original Doom radius (16 units scaled by 0.01)
+    const float PLAYER_RADIUS = 0.16f; // Raio original do Doom (16 unidades escaladas por 0.01)
     const float COLLISION_BUFFER = 0.005f;
 
     const float PLAYER_EYE_HEIGHT = 0.5f;
@@ -55,7 +55,7 @@ private:
 
     void UpdateSectorAnims(float deltaTime);
 
-    bool CheckCollision(glm::vec3 nextPos);
+
 };
 
 #endif // MOVEMENT_H

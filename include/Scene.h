@@ -12,10 +12,10 @@
 struct Vertex3D {
     float x, y, z;
     float u, v;
-    float r, g, b;  // light modulation
-    float sectorIndex; // Sector ID (0..N)
-    float vertexType;  // 0: Floor, 1: Ceiling, 2: WallTop, 3: WallBottom
-    float invTexHeight; // 1.0 / Texture Height (for UV scrolling)
+    float r, g, b;  // modulação de luz (cor)
+    float sectorIndex; // ID do Setor (0..N)
+    float vertexType;  // 0: Piso, 1: Teto, 2: Topo da Parede, 3: Base da Parede
+    float invTexHeight; // 1.0 / Altura da Textura (para rolagem UV)
 };
 
 struct DrawBatch {

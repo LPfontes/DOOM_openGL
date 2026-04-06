@@ -18,10 +18,10 @@ void RTManager::Init() {
 
 void RTManager::SetFlashlight(const glm::vec3& pos, const glm::vec3& dir, bool on) {
     GPULight fl;
-    // Scale camera pos (already 0.01) back to DOOM units for the raytracer
-    fl.posType = glm::vec4(pos.x * 100.0f, pos.y * 100.0f, pos.z * 100.0f, 3.0f); // type 3: spotlight
-    fl.colorInt = glm::vec4(1.0f, 0.95f, 0.8f, on ? 3.5f : 0.0f); // Use zero intensity if OFF
-    fl.dirCutoff = glm::vec4(dir.x, dir.y, dir.z, 0.92f); // ~22.5 degrees cone
+    // Escala a posição da câmera (que já está em 0.01) de volta para unidades DOOM para o raytracer
+    fl.posType = glm::vec4(pos.x * 100.0f, pos.y * 100.0f, pos.z * 100.0f, 3.0f); // tipo 3: holofote
+    fl.colorInt = glm::vec4(1.0f, 0.95f, 0.8f, on ? 3.5f : 0.0f); // Usa intensidade zero se estiver DESLIGADO
+    fl.dirCutoff = glm::vec4(dir.x, dir.y, dir.z, 0.92f); // cone de aprox. 22.5 graus
     fl.radius = 800.0f;
     
     if (mLights.empty()) {
@@ -53,29 +53,29 @@ void RTManager::UpdateLights(const std::vector<WADThing>& things, const std::vec
         gl.dirCutoff = glm::vec4(0,0,0,0);
 
         switch (t.type) {
-            case 34: // Candle
-                gl.colorInt = glm::vec4(1.0f, 0.9f, 0.6f, 1.5f); // Increased from 0.8
-                gl.radius = 100.0f; // Increased from 64
+            case 34: // Vela (Candle)
+                gl.colorInt = glm::vec4(1.0f, 0.9f, 0.6f, 1.5f); // Aumentado de 0.8
+                gl.radius = 100.0f; // Aumentado de 64
                 isLight = true;
                 break;
-            case 35: // Candelabra
-                gl.colorInt = glm::vec4(1.0f, 0.85f, 0.5f, 3.5f); // Increased from 1.5
-                gl.radius = 250.0f; // Increased from 120
+            case 35: // Candelabro (Candelabra)
+                gl.colorInt = glm::vec4(1.0f, 0.85f, 0.5f, 3.5f); // Aumentado de 1.5
+                gl.radius = 250.0f; // Aumentado de 120
                 isLight = true;
                 break;
-            case 2024: // Green Torch
-                gl.colorInt = glm::vec4(0.4f, 1.0f, 0.4f, 4.5f); // Increased from 2.2
+            case 2024: // Tocha Verde (Green Torch)
+                gl.colorInt = glm::vec4(0.4f, 1.0f, 0.4f, 4.5f); // Aumentado de 2.2
                 gl.posType.w = 1.0f; 
-                gl.radius = 350.0f; // Increased from 150
+                gl.radius = 350.0f; // Aumentado de 150
                 isLight = true;
                 break;
-            case 2025: // Red Torch
+            case 2025: // Tocha Vermelha (Red Torch)
                 gl.colorInt = glm::vec4(1.0f, 0.3f, 0.3f, 4.5f);
                 gl.posType.w = 1.0f;
                 gl.radius = 350.0f;
                 isLight = true;
                 break;
-            case 2026: // Blue Torch
+            case 2026: // Tocha Azul (Blue Torch)
                 gl.colorInt = glm::vec4(0.3f, 0.5f, 1.0f, 4.5f);
                 gl.posType.w = 1.0f;
                 gl.radius = 350.0f;
@@ -86,10 +86,10 @@ void RTManager::UpdateLights(const std::vector<WADThing>& things, const std::vec
                               (t.type == 56) ? glm::vec4(1.0f, 0.3f, 0.3f, 3.0f) :
                                                glm::vec4(0.4f, 1.0f, 0.4f, 3.0f);
                 gl.posType.w = 1.0f;
-                gl.radius = 200.0f; // Increased
+                gl.radius = 200.0f; // Aumentado
                 isLight = true;
                 break;
-            case 48: // Tech pillar
+            case 48: // Pilar tecnológico (Tech pillar)
                 gl.colorInt = glm::vec4(0.5f, 0.7f, 1.0f, 2.0f);
                 gl.posType.w = 2.0f;
                 gl.radius = 200.0f;
@@ -141,9 +141,9 @@ void RTManager::UpdateMapData(const std::vector<WADLineDef>& lines, const std::v
 }
 
 void RTManager::Bind(GLuint shaderProgram) {
-    // Light data to binding 0
+    // Dados de luz para binding 0
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, mLightSSBO);
-    // Line/Geometry data to binding 1
+    // Dados de Linha/Geometria para binding 1
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, mLineSSBO);
     
     glUniform1i(glGetUniformLocation(shaderProgram, "uNumLights"), (int)mLights.size());

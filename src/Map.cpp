@@ -13,53 +13,53 @@ bool Map::LoadFromWAD(WADParser& parser) {
         return false;
     }
 
-    // Doom maps have a specific order of lumps following the map name
+    // Mapas de Doom têm uma ordem específica de lumps seguindo o nome do mapa
     // 1: THINGS, 2: LINEDEFS, 3: SIDEDEFS, 4: VERTEXES, 5: SEGS, 6: SSECTORS, 7: NODES, 8: SECTORS, 9: REJECT, 10: BLOCKMAP
     
-    // Load Things (Index + 1)
+    // Carrega Coisas/Things (Índice + 1)
     auto thingData = parser.ReadLumpData(mapIndex + 1);
     int numThings = thingData.size() / sizeof(WADThing);
     mThings.resize(numThings);
     memcpy(mThings.data(), thingData.data(), thingData.size());
 
-    // Load Vertices (Index + 4)
+    // Carrega Vértices (Índice + 4)
     auto vertexData = parser.ReadLumpData(mapIndex + 4);
 
     int numVertices = vertexData.size() / sizeof(WADVertex);
     mVertices.resize(numVertices);
     memcpy(mVertices.data(), vertexData.data(), vertexData.size());
 
-    // Load LineDefs (Index + 2)
+    // Carrega LineDefs (Índice + 2)
     auto lineData = parser.ReadLumpData(mapIndex + 2);
     int numLines = lineData.size() / sizeof(WADLineDef);
     mLineDefs.resize(numLines);
     memcpy(mLineDefs.data(), lineData.data(), lineData.size());
 
-    // Load SideDefs (Index + 3)
+    // Carrega SideDefs (Índice + 3)
     auto sideData = parser.ReadLumpData(mapIndex + 3);
     int numSides = sideData.size() / sizeof(WADSideDef);
     mSideDefs.resize(numSides);
     memcpy(mSideDefs.data(), sideData.data(), sideData.size());
 
-    // Load Sectors (Index + 8)
+    // Carrega Setores/Sectors (Índice + 8)
     auto sectorData = parser.ReadLumpData(mapIndex + 8);
     int numSectors = sectorData.size() / sizeof(WADSector);
     mSectors.resize(numSectors);
     memcpy(mSectors.data(), sectorData.data(), sectorData.size());
 
-    // Load Segs (Index + 5)
+    // Carrega Segs (Índice + 5)
     auto segData = parser.ReadLumpData(mapIndex + 5);
     int numSegs = segData.size() / sizeof(WADSeg);
     mSegs.resize(numSegs);
     memcpy(mSegs.data(), segData.data(), segData.size());
 
-    // Load SubSectors (Index + 6)
+    // Carrega Sub-setores/SubSectors (Índice + 6)
     auto ssectorData = parser.ReadLumpData(mapIndex + 6);
     int numSSectors = ssectorData.size() / sizeof(WADSubSector);
     mSubSectors.resize(numSSectors);
     memcpy(mSubSectors.data(), ssectorData.data(), ssectorData.size());
 
-    // Load Nodes (Index + 7)
+    // Carrega Nós/Nodes (Índice + 7)
     auto nodeData = parser.ReadLumpData(mapIndex + 7);
     int numNodes = nodeData.size() / sizeof(WADNode);
     mNodes.resize(numNodes);
@@ -83,24 +83,23 @@ int Map::GetSectorAt(float x, float y) const {
     int cur = (int)mNodes.size() - 1;
     while (!(cur & 0x8000)) {
         const auto& node = mNodes[cur];
-        // Partition line math (dx, dy are the vector components)
-        // We calculate which side the point is on relative to the partition line
-        // Use double precision for the cross product to avoid float precision issues in large maps
+        // Matemática da linha de partição (dx, dy são os componentes do vetor)
+        // Calculamos em qual lado o ponto está em relação à linha de partição
         double dx = (double)x - node.x;
         double dy = (double)y - node.y;
         double cross = dx * (double)node.dy - dy * (double)node.dx;
         
-        // Doom's logic: if (node.dy * dx - dy * node.dx > 0) then child 0 (front)
+        // Lógica do Doom: se (node.dy * dx - dy * node.dx > 0) então filho 0 (frente)
         if (cross > 0) cur = node.children[0];
         else cur = node.children[1];
     }
 
-    // Found subsector!
+    // Sub-setor encontrado!
     int ssecIdx = cur & 0x7FFF;
     if (ssecIdx >= mSubSectors.size()) return -1;
     const auto& ssec = mSubSectors[ssecIdx];
     
-    // Every seg in a subsector belongs to the same sector
+    // Cada seg em um sub-setor pertence ao mesmo setor
     if (ssec.numSegs > 0) {
         const auto& seg = mSegs[ssec.firstSeg];
         if (seg.lineDef != -1) {
@@ -144,6 +143,7 @@ bool Map::IsDoorOpen(int lineDefIdx) const {
 static bool RayIntersectsSegment2D(const glm::vec2& rayOrigin, const glm::vec2& rayDir,
                                     const glm::vec2& p1, const glm::vec2& p2,
                                     float& outDistance) {
+    // Intersecção de Raio (Ray) com Segmento 2D
     glm::vec2 seg = p2 - p1;
     float denom = rayDir.x * seg.y - rayDir.y * seg.x;
     if (std::fabs(denom) < 1e-6f)
@@ -162,32 +162,6 @@ static bool RayIntersectsSegment2D(const glm::vec2& rayOrigin, const glm::vec2& 
     return true;
 }
 
-// int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const {
-//     float minDist = std::numeric_limits<float>::max();
-//     int hitLine = -1;
-
-//     glm::vec2 origin2D(rayOrigin.x, rayOrigin.z);
-//     glm::vec2 dir2D(rayDir.x, rayDir.z);
-//     if (glm::length(dir2D) < 1e-6f)
-//         return -1;
-//     dir2D = glm::normalize(dir2D);
-
-//     for (int i = 0; i < (int)mLineDefs.size(); ++i) {
-//         const auto& line = mLineDefs[i];
-//         const auto& v1 = mVertices[line.v1];
-//         const auto& v2 = mVertices[line.v2];
-//         glm::vec2 p1(v1.x * 0.01f, v1.y * 0.01f);
-//         glm::vec2 p2(v2.x * 0.01f, v2.y * 0.01f);
-
-//         float dist;
-//         if (RayIntersectsSegment2D(origin2D, dir2D, p1, p2, dist) && dist < minDist) {
-//             minDist = dist;
-//             hitLine = i;
-//         }
-//     }
-//     return hitLine;
-// }
-
 int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const {
     float minDist = std::numeric_limits<float>::max();
     int hitLine = -1;
@@ -195,7 +169,7 @@ int Map::RayCastToLineDef(const glm::vec3& rayOrigin, const glm::vec3& rayDir) c
 
     glm::vec2 origin2D(rayOrigin.x, rayOrigin.z);
     
-    float angles[] = { 0.0f, -0.174f, 0.174f }; 
+    float angles[] = { 0.0f, -0.174f, 0.174f }; // Ângulos de amostragem
 
     for (float angle : angles) {
         float cosA = cosf(angle);

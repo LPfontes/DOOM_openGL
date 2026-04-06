@@ -7,7 +7,7 @@
 
 #pragma pack(push, 1)
 
-// Doom Thing
+// Coisa (Thing) do Doom
 struct WADThing {
     int16_t x;
     int16_t y;
@@ -16,13 +16,13 @@ struct WADThing {
     int16_t options;
 };
 
-// Doom Vertex
+// Vértice (Vertex) do Doom
 struct WADVertex {
     int16_t x;
     int16_t y;
 };
 
-// Doom Linedef (v1 and v2 are indices to vertexes)
+// Linedef do Doom (v1 e v2 são índices para vértices)
 struct WADLineDef {
     int16_t v1;
     int16_t v2;
@@ -33,7 +33,7 @@ struct WADLineDef {
     int16_t leftSideDef;
 };
 
-// Doom Sidedef
+// Sidedef do Doom
 struct WADSideDef {
     int16_t xOffset;
     int16_t yOffset;
@@ -43,7 +43,7 @@ struct WADSideDef {
     int16_t sector;
 };
 
-// Doom Sector
+// Setor (Sector) do Doom
 struct WADSector {
     int16_t floorHeight;
     int16_t ceilingHeight;
@@ -54,7 +54,7 @@ struct WADSector {
     int16_t tag;
 };
 
-// Doom Seg (part of a subsector)
+// Seg do Doom (parte de um sub-setor)
 struct WADSeg {
     int16_t v1;
     int16_t v2;
@@ -64,17 +64,17 @@ struct WADSeg {
     int16_t offset;
 };
 
-// Doom SubSector
+// Sub-setor (SubSector) do Doom
 struct WADSubSector {
     int16_t numSegs;
     int16_t firstSeg;
 };
 
-// Doom Node (for BSP)
+// Nó (Node) do Doom (para BSP)
 struct WADNode {
-    int16_t x, y, dx, dy; // Partition line
+    int16_t x, y, dx, dy; // Linha de partição
     int16_t bbox[2][4];   // [right, left][top, bottom, left, right]
-    uint16_t children[2]; // If bit 15 is 1, it's a subsector (index with bit 15 cleared)
+    uint16_t children[2]; // Se o bit 15 for 1, é um sub-setor (índice com o bit 15 limpo)
 };
 
 #pragma pack(pop)

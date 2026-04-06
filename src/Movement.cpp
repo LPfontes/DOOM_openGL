@@ -6,7 +6,7 @@
 
 Movement::Movement(Camera& cam, Map& m, float startX, float startY)
     : camera(cam), map(m), lastX(startX), lastY(startY), firstMouse(true) {
-    // Initial floor height
+    // Altura inicial do piso
     int secIdx = map.GetSectorAt(camera.Position.x * 100.0f, camera.Position.z * 100.0f);
     if (secIdx != -1) {
         targetFloorHeight = (float)map.GetSectors()[secIdx].floorHeight * 0.01f;
@@ -22,7 +22,7 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         currentSpeed *= RUN_MULTIPLIER;
 
-    // Toggle devMode with N key
+    // Alterna modo dev (noclip) com a tecla N
     if (glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS) {
         if (!nKeyWasPressed) {
             devMode = !devMode;
@@ -38,11 +38,11 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
 
     glm::vec3 oldPos = camera.Position;
     
-    // Get current sector and floor height
+    // Obtém o setor atual e a altura do piso
     int curSecIdx = map.GetSectorAt(oldPos.x * 100.0f, oldPos.z * 100.0f);
     float curFloor = (curSecIdx != -1) ? (float)map.GetSectors()[curSecIdx].floorHeight * 0.01f : oldPos.y - PLAYER_EYE_HEIGHT;
 
-    // Movement intent
+    // Intenção de movimento
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime, true);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -56,7 +56,7 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
         glm::vec3 nextPos = camera.Position;
         glm::vec3 moveVec = nextPos - oldPos;
 
-        // Check collision and adjust pos with sliding
+        // Verifica colisão e ajusta a posição com deslizamento (sliding)
         const auto& vertices = map.GetVertices();
         const auto& lineDefs = map.GetLineDefs();
         const auto& sectors  = map.GetSectors();
@@ -84,7 +84,7 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
             float collisionRadius = pr + (COLLISION_BUFFER * 100.0f);
 
             if (distSq < collisionRadius * collisionRadius) {
-                // If this door is open, don't block
+                // Se esta porta estiver aberta, não bloqueia
                 if (map.IsDoorOpen(lineIdx)) {
                     continue;
                 }
@@ -98,7 +98,7 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
                         float otherFloor = (float)otherSec.floorHeight * 0.01f;
                         float otherCeil = (float)otherSec.ceilingHeight * 0.01f;
                         
-                        // Add dynamic offset for doors
+                        // Adiciona deslocamento dinâmico para portas
                         otherCeil += map.GetCeilOffsets()[sides[otherSideIdx].sector];
                         
                         if (otherFloor - curFloor > MAX_STEP_HEIGHT) blocking = true;
@@ -145,42 +145,42 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
 
         camera.Position = nextPos;
 
-        // Floor height and Lerp
+        // Altura do piso e Interpolação (Lerp)
         int newSecIdx = map.GetSectorAt(camera.Position.x * 100.0f, camera.Position.z * 100.0f);
         if (newSecIdx != -1) {
             targetFloorHeight = (float)map.GetSectors()[newSecIdx].floorHeight * 0.01f;
         }
 
-        // Interpolate camera height
+        // Interpola a altura da câmera
         float currentY = camera.Position.y;
         float targetY = targetFloorHeight + PLAYER_EYE_HEIGHT;
         camera.Position.y = currentY + (targetY - currentY) * SMOOTH_FACTOR * deltaTime;
     } else {
-        // Dev Mode (Noclip): Fly up/down with Q/E
+        // Modo Dev (Noclip): voa para cima/baixo com Q/E
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
             camera.Position.y += currentSpeed * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
             camera.Position.y -= currentSpeed * deltaTime;
     }
 
-    // --- INTERACTION: OPEN DOORS ---
+    // --- INTERAÇÃO: ABRIR PORTAS ---
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
         if (!spaceKeyWasPressed) {
             spaceKeyWasPressed = true;
             
-            // Raycast forward to find a line interaction
+            // Raycast frontal para encontrar uma interação de linha
             int hitLine = map.RayCastToLineDef(camera.Position, camera.Front);
             if (hitLine != -1) {
                 const auto& line = map.GetLineDefs()[hitLine];
                 
-                // --- DOORS (Ceiling) ---
+                // --- PORTAS (Teto) ---
                 bool isDoor = (line.specialType == 1 || line.specialType == 9 || line.specialType == 11 || line.specialType == 14 ||
                                line.specialType == 26 || line.specialType == 27 || line.specialType == 28 ||
                                line.specialType == 31 || line.specialType == 32 || line.specialType == 33 || line.specialType == 34 ||
                                line.specialType == 46 || line.specialType == 63 || line.specialType == 103 ||
                                line.specialType == 114 || line.specialType == 115 || line.specialType == 117 || line.specialType == 118);
                 
-                // --- FLOORS (Elevation) ---
+                // --- PISOS (Elevação) ---
                 bool isFloor = (line.specialType == 18 || line.specialType == 19 || line.specialType == 20 || // Floor Raise
                                 line.specialType == 36 || line.specialType == 37 || line.specialType == 38 || // W1/S1/WR Floor Raise
                                 line.specialType == 22 || line.specialType == 23 ||
@@ -190,7 +190,7 @@ void Movement::ProcessInput(GLFWwindow* window, float deltaTime) {
                     std::vector<int> targetSectors;
                     
                     if (line.sectorTag == 0) {
-                        // Local: check both sides
+                        // Local: verifica ambos os lados
                         int sR = (line.rightSideDef != -1) ? map.GetSideDefs()[line.rightSideDef].sector : -1;
                         int sL = (line.leftSideDef != -1) ? map.GetSideDefs()[line.leftSideDef].sector : -1;
                         
@@ -269,6 +269,7 @@ void Movement::UpdateSectorAnims(float deltaTime) {
 
     for (auto it = activeAnims.begin(); it != activeAnims.end(); ) {
         bool isCeil = (it->animType == SectorAnimType::CEILING);
+        // Atualiza a animação do setor
         float& currentOff = isCeil ? ceilOffsets[it->sectorIndex] : floorOffsets[it->sectorIndex];
         float baseHeight = isCeil ? (float)sectors[it->sectorIndex].ceilingHeight : (float)sectors[it->sectorIndex].floorHeight;
         float totalTargetOff = (it->targetY - baseHeight);
@@ -307,12 +308,6 @@ void Movement::UpdateSectorAnims(float deltaTime) {
     }
 }
 
-bool Movement::CheckCollision(glm::vec3 nextPos) {
-    // This is now handled inline in ProcessInput for sliding, 
-    // but we can keep it as a simple check if needed.
-    return false; 
-}
-
 void Movement::ProcessMouse(double xposIn, double yposIn) {
     float xpos = static_cast<float>(xposIn);
     float ypos = static_cast<float>(yposIn);
@@ -342,7 +337,7 @@ void Movement::OpenDoorByLineDefIndex(int lineDefIdx) {
     
     const auto& line = map.GetLineDefs()[lineDefIdx];
 
-    // Check if it's a door
+    // Verifica se é uma porta
     if (line.specialType == 0) return;
 
     const auto& sides = map.GetSideDefs();
@@ -350,7 +345,7 @@ void Movement::OpenDoorByLineDefIndex(int lineDefIdx) {
     
     int curSecIdx = map.GetSectorAt(camera.Position.x * 100.0f, camera.Position.z * 100.0f);
     
-    // Determine target sectors (Local vs Remote)
+    // Determina os setores de destino (Local vs Remoto)
     std::vector<int> targetSectors;
     if (line.sectorTag == 0) {
         int sR = sides[line.rightSideDef].sector;

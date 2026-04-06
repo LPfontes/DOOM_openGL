@@ -7,9 +7,9 @@
 #include "MapData.h"
 
 struct GPULight {
-    glm::vec4 posType;      // x, y, z, type (0: steady, 1: flicker, 2: pulse, 3: spotlight)
-    glm::vec4 colorInt;     // r, g, b, intensity
-    glm::vec4 dirCutoff;    // dx, dy, dz, cutoff
+    glm::vec4 posType;      // x, y, z, tipo (0: fixo, 1: oscilante, 2: pulso, 3: holofote)
+    glm::vec4 colorInt;     // r, g, b, intensidade
+    glm::vec4 dirCutoff;    // dx, dy, dz, corte (cutoff)
     float radius;
     float padding[3];
 };
