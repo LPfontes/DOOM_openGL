@@ -151,13 +151,14 @@ int main() {
             glUseProgram(shaderProgram);
 
             glm::mat4 model = glm::mat4(1.0f);
-            model = glm::scale(model, glm::vec3(0.01f));
+            model = glm::scale(model, glm::vec3(0.01f)); // As unidades originais do DOOM são muito grandes, por isso dividimos por 100
             view = camera.GetViewMatrix();
+            // Atualiza a posição da luz (que é a posição da câmera)
             GLuint lightPosLoc = glGetUniformLocation(shaderProgram, "lightPos");
             glUniform3f(lightPosLoc, camera.Position.x, camera.Position.y, camera.Position.z);
-
+            // Atualiza a projeção
             projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.01f, 1000.0f);
-
+            // Atualiza os uniformes do shader
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));

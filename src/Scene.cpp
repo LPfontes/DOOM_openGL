@@ -78,9 +78,12 @@ TexEntry Scene::GetOrLoadFlatTex(const char* name8, WADParser& wad) {
 }
 
 void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
+    // Inicializa o Ray Tracer
     mRTManager.Init();
+    // Atualiza os dados do mapa
     mRTManager.UpdateMapData(map.GetLineDefs(), map.GetVertices(), map.GetSectors(), map.GetSideDefs());
-    mRTManager.UpdateLights(map.GetThings(), map.GetSectors(), 0); // Setor do jogador simplificado
+    // Atualiza as luzes
+    mRTManager.UpdateLights(map.GetThings(), map.GetSectors(), 0); 
 
     // Cria um padrão xadrez (checkerboard) magenta/preto 8x8 de fallback
     {
@@ -95,7 +98,7 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             }
         mFallbackTex = CreateGLTexture(fb, 8, 8);
     }
-
+    // Pega os dados do mapa
     const auto& mapVertices = map.GetVertices();
     const auto& lineDefs    = map.GetLineDefs();
     const auto& sideDefs    = map.GetSideDefs();
@@ -113,22 +116,27 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
                         float light, const TexEntry& tex,
                         float vTypeBot, float vTypeTop)
     {
+        // Se o topo for menor que a base, não desenha
         if (top <= bottom) return;
-        float segLen = sqrtf(
+        // Calcula o comprimento do segmento pelo Teorema de Pitágoras
+        float segLen = sqrtf( 
             (float)(vb.x - va.x) * (vb.x - va.x) +
             (float)(vb.y - va.y) * (vb.y - va.y));
+        // Calcula a altura da parede
         float wallH = top - bottom;
+        // Calcula as coordenadas de textura
         float u0 = (segOffset + xOff) / (float)tex.w;
         float u1 = (segOffset + xOff + segLen) / (float)tex.w;
         float v_top = yOff / (float)tex.h;
         float v_bot = (wallH + yOff) / (float)tex.h;
-
+        // Índices dos setores
         float siBot = (float)sIdxBot;
         float siTop = (float)sIdxTop;
-
+        // Adiciona os vértices ao lote
         auto& verts = batchMap[tex.id];
         float invH = 1.0f / (float)tex.h;
         // Triângulo 1
+        // va.x, bottom, va.y: Posição 3D do vértice y vira z no OpenGL
         verts.push_back({(float)va.x, bottom, (float)va.y, u0, v_bot, light, light, light, siBot, vTypeBot, invH});
         verts.push_back({(float)vb.x, bottom, (float)vb.y, u1, v_bot, light, light, light, siBot, vTypeBot, invH});
         verts.push_back({(float)va.x, top,    (float)va.y, u0, v_top, light, light, light, siTop, vTypeTop, invH});
@@ -140,23 +148,27 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
 
     // --- Paredes via SEGS ---
     for (const auto& seg : segs) {
+        // Se o lineDef for -1, não desenha
         if (seg.lineDef == -1) continue;
+        // Se a porta estiver aberta, não desenha
         if (map.IsDoorOpen(seg.lineDef)) continue;
-
+        // Pega os dados do segmento
         const auto& line = lineDefs[seg.lineDef];
         const auto& v1   = mapVertices[seg.v1];
         const auto& v2   = mapVertices[seg.v2];
-
+        // Pega o índice do lado
         int sideIdx = (seg.side == 0) ? line.rightSideDef : line.leftSideDef;
         if (sideIdx == -1) continue;
+        // Pega os dados do lado
         const auto& side   = sideDefs[sideIdx];
         const auto& sector = sectors[side.sector];
+        // Calcula a iluminação
         float light        = (float)sector.lightLevel / 255.0f;
         float sOff         = (float)seg.offset;
         float xOff         = (float)side.xOffset;
         float yOff         = (float)side.yOffset;
 
-        if (line.leftSideDef == -1) {
+        if (line.leftSideDef == -1) { 
             // Parede sólida — usa textura do meio (middle texture)
             auto tex = GetOrLoadWallTex(side.middleTexture, wad);
             addWall(v1, v2,
@@ -173,8 +185,10 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             // Parede inferior (degrau/step up)
             if (otherSector.floorHeight > sector.floorHeight) {
                 std::string ltex = NormalizeName(side.lowerTexture);
+                // Se a textura não for vazia
                 if (ltex != "-" && !ltex.empty()) {
                     auto tex = GetOrLoadWallTex(side.lowerTexture, wad);
+                    // Adiciona o quadrilátero de parede inferior
                     addWall(v1, v2,
                             (float)sector.floorHeight, (float)otherSector.floorHeight,
                             side.sector, otherSide.sector,
@@ -185,8 +199,10 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
             // Parede superior (rebaixamento de teto / porta)
             if (otherSector.ceilingHeight < sector.ceilingHeight) {
                 std::string utex = NormalizeName(side.upperTexture);
-                if (utex != "-" && !utex.empty()) {
+                // Se a textura não for vazia
+                if (utex != "-" && !utex.empty()) { 
                     auto tex = GetOrLoadWallTex(side.upperTexture, wad);
+                    // Adiciona o quadrilátero de parede superior
                     addWall(v1, v2,
                             (float)otherSector.ceilingHeight, (float)sector.ceilingHeight,
                             otherSide.sector, side.sector,
@@ -199,11 +215,12 @@ void Scene::GenerateFromMap(const Map& map, WADParser& wad) {
 
     // --- Pisos e Tetos via Ear Clipping ---
     for (int sIdx = 0; sIdx < (int)sectors.size(); ++sIdx) {
+        // Pega os dados do setor
         const auto& sector = sectors[sIdx];
         float floor = (float)sector.floorHeight;
         float ceil  = (float)sector.ceilingHeight;
         float light = (float)sector.lightLevel / 255.0f;
-
+        // Pega as texturas
         auto floorTex = GetOrLoadFlatTex(sector.floorTexture, wad);
         bool isSky    = NormalizeName(sector.ceilingTexture) == "F_SKY1";
         auto ceilTex  = isSky ? TexEntry{0,64,64} : GetOrLoadFlatTex(sector.ceilingTexture, wad);
