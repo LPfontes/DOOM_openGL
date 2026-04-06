@@ -2,6 +2,15 @@
 
 Um motor de renderização 3D simplificado construído em C++ e OpenGL para visualizar mapas originais do Doom (.WAD).
 
+<p align="center">
+  <img src="Captura%20de%20tela%202026-04-05%20192008.png" width="45%" alt="Renderização de Setores" />
+  <img src="Captura%20de%20tela%202026-04-05%20192505.png" width="45%" alt="Ray Tracing e Sombras" />
+</p>
+<p align="center">
+  <img src="Captura%20de%20tela%202026-04-05%20192604.png" width="45%" alt="Iluminação Atmosférica" />
+  <img src="Captura%20de%20tela%202026-04-05%20193028.png" width="45%" alt="Exploração de Mapas" />
+</p>
+
 ## 🌟 Funcionalidades
 
 - **Parser de WAD**: Leitura completa de cabeçalho, diretório e lumps de arquivos WAD.
@@ -69,9 +78,14 @@ No motor Doom, um mapa não é um arquivo único, mas uma sequência específica
 ## 🧠 Conceitos Técnicos
 
 ### Binary Space Partitioning (BSP)
+
 O motor do Doom utiliza uma árvore **BSP** para organizar o mapa. Isso permite:
 - **Renderização Eficiente**: O motor decide rapidamente quais partes do mapa estão na frente ou atrás do jogador, evitando desenhar o que não é visto.
 - **Divisão em SubSetores**: O BSP quebra setores complexos e côncavos em pequenos pedaços convexos (SubSectors), que são muito mais fáceis de processar matematicamente.
+
+<p align="center">
+  <img src="bsp_doom_ssectors.png" width="600" alt="Diagrama BSP SubSectors" />
+</p>
 
 ### Ear Clipping (Triangulação)
 Como os setores do Doom podem ser buracos ou formas complexas (como a letra "C"), o OpenGL não consegue desenhá-los diretamente. Usamos o algoritmo de **Ear Clipping**:
