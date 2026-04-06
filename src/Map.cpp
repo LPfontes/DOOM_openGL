@@ -94,7 +94,7 @@ int Map::GetSectorAt(float x, float y) const {
         else cur = node.children[1];
     }
 
-    // Sub-setor encontrado!
+    // Sub-setor encontrado
     int ssecIdx = cur & 0x7FFF;
     if (ssecIdx >= mSubSectors.size()) return -1;
     const auto& ssec = mSubSectors[ssecIdx];

@@ -38,6 +38,11 @@ Um motor de renderização 3D simplificado construído em C++ e OpenGL para visu
   - Foco de luz (Spotlight) controlado pela câmera do jogador.
   - Alternável a qualquer momento (Tecla `F`).
 
+## Integrantes
+- Luiz Paulo: WAD parser e construção rederização do cenario
+- Hyago Fellipe: Texturas e iluminação
+- Diogo Cantuária: Portas e iluminação
+
 ## 🛠️ Tecnologias Utilizadas
 
 - **C++**: Lógica principal e processamento de dados binários.
@@ -147,7 +152,6 @@ cmake --build build
 # Executar
 .\build\DOOM_OpenGL.exe
 ```
-
 ## 🎮 Controles
 - **W, A, S, D**: Movimentação.
 - **Mouse**: Olhar ao redor.
@@ -155,5 +159,15 @@ cmake --build build
 - **F**: Ligar / Desligar Lanterna. 🔦
 - **ESC**: Fechar aplicação.
 
+## 🚀 Próximos Passos (Roadmap)
+
+- [ ] **Renderização de Sprites (Things)**: Implementar *billboard rendering* para exibir inimigos, itens e decorações em 2D dentro do mundo 3D.
+- [ ] **Sistema de Áudio**: Integração com bibliotecas como OpenAL ou SDL_mixer para sons de ambiente, disparos e trilha sonora original.
+- [ ] **Lógica de Gameplay**: Implementação de estado do jogador (HP, munição), armas e IA básica para os monstros.
+- [ ] **HUD e Menus**: Criação da barra de status clássica e menus de navegação.
+- [ ] **Skybox Avançado**: Renderização de planos de fundo infinitos para os setores de céu (`F_SKY1`).
+- [ ] **Animações de Textura**: Suporte para texturas animadas (como fogo e água) e scroll de texturas em superfícies.
+
 ---
+
 *Projeto desenvolvido como parte de um estudo sobre engines de jogos clássicos e computação gráfica.*
